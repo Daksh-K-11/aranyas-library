@@ -1,184 +1,189 @@
 "use client"
 
 import * as React from "react"
-import { motion, AnimatePresence } from "framer-motion"
-import { Mail, Lock, User, ArrowRight, Loader2 } from "lucide-react"
-import { API_BASE_URL } from "@/lib/auth"
+import { useRouter, useSearchParams } from "next/navigation"
+import { ArrowRight, Eye, EyeOff, Loader2, Lock, Mail, User } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { useToast } from "@/hooks/use-toast"
-import { storeToken } from "@/lib/auth"
-import { useRouter } from "next/navigation"
+import { Label } from "@/components/ui/label"
+import { api, errorMessage } from "@/lib/api"
+import { getToken, storeToken } from "@/lib/auth"
+import { cn } from "@/lib/utils"
 
-type AuthMode = "login" | "register"
+type Mode = "login" | "register"
 
 export function AuthForm() {
-  const [mode, setMode] = React.useState<AuthMode>("login")
-  const [isLoading, setIsLoading] = React.useState(false)
-  const { toast } = useToast()
   const router = useRouter()
+  const params = useSearchParams()
+  const [mode, setMode] = React.useState<Mode>("login")
+  const [loading, setLoading] = React.useState(false)
+  const [showPw, setShowPw] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+  const [password, setPassword] = React.useState("")
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  React.useEffect(() => {
+    if (getToken()) {
+      router.replace("/dashboard")
+      return
+    }
+    if (params.get("expired")) toast.info("Your session expired. Please sign in again.")
+  }, [router, params])
+
+  const pwChecks = [
+    { ok: password.length >= 8, label: "8+ characters" },
+    { ok: /[A-Za-z]/.test(password), label: "a letter" },
+    { ok: /\d/.test(password), label: "a number" },
+  ]
+
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    setIsLoading(true)
+    setError(null)
+    const fd = new FormData(e.currentTarget)
+    const email = String(fd.get("email") || "").trim()
+    const name = String(fd.get("name") || "").trim()
 
-    const formData = new FormData(e.currentTarget)
-    const email = formData.get("email")
-    const password = formData.get("password")
-    const name = formData.get("name")
+    if (mode === "register" && !pwChecks.every((c) => c.ok)) {
+      setError("Password needs at least 8 characters, including a letter and a number.")
+      return
+    }
 
+    setLoading(true)
     try {
-      const endpoint = mode === "login" ? "/auth/login" : "/auth/register"
-      const payload = mode === "login" ? { email, password } : { email, password, name }
-
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
-
-      if (response.status === 400 && mode === "register") {
-        toast({ title: "User already exists", variant: "destructive" })
-        return
+      if (mode === "register") {
+        await api.register(email, password, name)
+        toast.success("Account created. Welcome!")
       }
-
-      if (response.status === 401 && mode === "login") {
-        toast({ title: "Invalid credentials", variant: "destructive" })
-        return
-      }
-
-      if (!response.ok) throw new Error("Something went wrong")
-
-      const data = await response.json()
-
-      if (mode === "login") {
-        await storeToken(data.access_token)
-        toast({ title: "Welcome back to Archive" })
-        // Redirect logic would go here
-        router.push("/dashboard")
-      } else {
-        toast({ title: "Registration successful", description: "Please log in to continue." })
-        setMode("login")
-      }
-    } catch (error) {
-      toast({
-        title: "Authentication failed",
-        description: "Please check your network or credentials.",
-        variant: "destructive",
-      })
+      const { access_token } = await api.login(email, password)
+      storeToken(access_token)
+      router.replace("/dashboard")
+    } catch (err) {
+      setError(errorMessage(err))
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
-  return (
-    <div className="w-full max-w-[440px]">
-      <motion.div
-        layout
-        className="bg-white p-8 md:p-12 rounded-[2.5rem] shadow-2xl shadow-black/5"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-      >
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={mode}
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 10 }}
-            transition={{ duration: 0.3 }}
-          >
-            <h2 className="text-3xl font-serif text-foreground mb-2">
-              {mode === "login" ? "Welcome back" : "Create an account"}
-            </h2>
-            <p className="text-muted-foreground mb-8 text-sm">
-              {mode === "login" ? "Enter your credentials to continue" : "Join the elite circle of librarians"}
-            </p>
-          </motion.div>
-        </AnimatePresence>
+  const switchMode = () => {
+    setMode((m) => (m === "login" ? "register" : "login"))
+    setError(null)
+  }
 
-        <form onSubmit={handleSubmit} className="space-gap-6 flex flex-col gap-6">
+  return (
+    <div className="w-full max-w-md">
+      <div className="rounded-3xl border bg-card p-6 shadow-xl shadow-black/5 sm:p-10">
+        <h2 className="font-serif text-3xl text-card-foreground">
+          {mode === "login" ? "Welcome back" : "Create your library"}
+        </h2>
+        <p className="mb-8 mt-1 text-sm text-muted-foreground">
+          {mode === "login" ? "Sign in to continue to your books." : "It's free. All you need is an email."}
+        </p>
+
+        <form onSubmit={onSubmit} className="flex flex-col gap-5" noValidate={false}>
           {mode === "register" && (
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground px-1">Name</label>
-              <div className="relative">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
-                <Input
-                  name="name"
-                  placeholder="Your full name"
-                  className="pl-12 h-14 bg-secondary/30 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-primary/20 transition-all"
-                  required
-                />
-              </div>
-            </div>
+            <Field id="name" label="Name (optional)" icon={User}>
+              <Input id="name" name="name" autoComplete="name" maxLength={80} placeholder="Your name" className="h-12 pl-11" />
+            </Field>
           )}
 
-          <div className="space-y-2">
-            <label className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground px-1">Email</label>
-            <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
-              <Input
-                name="email"
-                type="email"
-                placeholder="name@company.com"
-                className="pl-12 h-14 bg-secondary/30 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-primary/20 transition-all"
-                required
-              />
-            </div>
-          </div>
+          <Field id="email" label="Email" icon={Mail}>
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              required
+              maxLength={254}
+              placeholder="you@example.com"
+              className="h-12 pl-11"
+            />
+          </Field>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between px-1">
-              <label className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground">Password</label>
-              {mode === "login" && (
-                <button
-                  type="button"
-                  className="text-[10px] font-bold tracking-widest uppercase text-primary hover:opacity-70 transition-opacity"
-                >
-                  Forgot?
-                </button>
-              )}
-            </div>
-            <div className="relative">
-              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
+          <div>
+            <Field id="password" label="Password" icon={Lock}>
               <Input
+                id="password"
                 name="password"
-                type="password"
-                placeholder="••••••••"
-                className="pl-12 h-14 bg-secondary/30 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-primary/20 transition-all"
+                type={showPw ? "text" : "password"}
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
                 required
+                minLength={mode === "register" ? 8 : 1}
+                maxLength={128}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="h-12 pl-11 pr-11"
               />
-            </div>
+              <button
+                type="button"
+                onClick={() => setShowPw((s) => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
+                aria-label={showPw ? "Hide password" : "Show password"}
+              >
+                {showPw ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </button>
+            </Field>
+            {mode === "register" && (
+              <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                {pwChecks.map((c) => (
+                  <li key={c.label} className={cn(c.ok ? "text-[color:var(--success)]" : "text-muted-foreground")}>
+                    {c.ok ? "✓" : "•"} {c.label}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
-          <Button
-            type="submit"
-            disabled={isLoading}
-            className="w-full h-14 rounded-2xl text-base font-medium shadow-lg hover:shadow-primary/20 transition-all group"
-          >
-            {isLoading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
+          {error && (
+            <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </p>
+          )}
+
+          <Button type="submit" disabled={loading} className="group h-12 rounded-xl text-base">
+            {loading ? (
+              <Loader2 className="size-5 animate-spin" />
             ) : (
-              <span className="flex items-center gap-2">
-                {mode === "login" ? "Log in to Archive" : "Begin your journey"}
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </span>
+              <>
+                {mode === "login" ? "Sign in" : "Create account"}
+                <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
+              </>
             )}
           </Button>
         </form>
 
-        <div className="mt-8 pt-8 border-t border-secondary text-center">
-          <p className="text-sm text-muted-foreground">
-            {mode === "login" ? "Don't have an account?" : "Already a member?"}{" "}
-            <button
-              onClick={() => setMode(mode === "login" ? "register" : "login")}
-              className="text-primary font-bold hover:underline underline-offset-4 transition-all"
-            >
-              {mode === "login" ? "Sign up" : "Log in"}
-            </button>
-          </p>
-        </div>
-      </motion.div>
+        <p className="mt-8 border-t pt-6 text-center text-sm text-muted-foreground">
+          {mode === "login" ? "New here?" : "Already have an account?"}{" "}
+          <button type="button" onClick={switchMode} className="font-semibold text-primary underline-offset-4 hover:underline">
+            {mode === "login" ? "Create an account" : "Sign in"}
+          </button>
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function Field({
+  id,
+  label,
+  icon: Icon,
+  children,
+}: {
+  id: string
+  label: string
+  icon: React.ComponentType<{ className?: string }>
+  children: React.ReactNode
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id} className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </Label>
+      <div className="relative">
+        <Icon className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        {children}
+      </div>
     </div>
   )
 }

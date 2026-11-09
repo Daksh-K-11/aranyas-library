@@ -1,153 +1,78 @@
 "use client"
 
-import { useState } from "react"
-import { motion } from "framer-motion"
-import { Star, BookOpen } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { Lock, PenLine } from "lucide-react"
+import { BookCover } from "@/components/book-cover"
+import { StarRating } from "@/components/star-rating"
+import { StatusBadge } from "@/components/status"
+import type { UserBook } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
-export interface ApiBook {
-  user_book_id: string
-  rating?: number
-  read_status: "unread" | "reading" | "completed"
-  genres?: string[]
-  tags?: string[]
-  personal_notes?: string
-  book: {
-    title: string
-    authors?: string[]
-    publisher?: string
-    published_year?: number
-    description?: string
-    categories?: string[]
-    cover_url?: string
-  }
-}
+/** @deprecated use UserBook from lib/types */
+export type ApiBook = UserBook
 
 interface BookCardProps {
-  data: ApiBook
+  data: UserBook
+  onOpen: (book: UserBook) => void
 }
 
-export function BookCard({ data }: BookCardProps) {
-  const [isOpen, setIsOpen] = useState(false)
-
-  if (!data || !data.book) return null
-
+export function BookCard({ data, onOpen }: BookCardProps) {
   const { book } = data
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "completed":
-        return "bg-emerald-500/20 text-emerald-700 border-emerald-200"
-      case "reading":
-        return "bg-blue-500/20 text-blue-700 border-blue-200"
-      case "unread":
-        return "bg-amber-500/20 text-amber-700 border-amber-200"
-      default:
-        return "bg-slate-500/20 text-slate-700 border-slate-200"
-    }
-  }
-
-  const ratingValue = data.rating ?? 0
-
-
   return (
-    <>
-      <motion.div
-        layout
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 20 }}
-        transition={{ duration: 0.3, ease: "easeOut" }}
-      >
-        <motion.div
-          onClick={() => setIsOpen(true)}
-          className="group relative h-full cursor-pointer"
-          whileHover={{ y: -8 }}
-          transition={{ type: "spring", stiffness: 300, damping: 20 }}
-        >
-          {/* Card Container */}
-          <div className="relative h-full rounded-2xl overflow-hidden bg-gradient-to-br from-white to-slate-50 border border-slate-200/50 shadow-md hover:shadow-2xl transition-shadow duration-300">
-            {/* Hover Glow */}
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-
-            {/* Content */}
-            <div className="relative flex gap-4 p-4 items-start">
-              {/* Left: Book Cover */}
-              <motion.div
-                className="relative w-24 h-36 shrink-0 rounded-lg overflow-hidden bg-gradient-to-br from-slate-100 to-slate-200 shadow-md"
-                whileHover={{ scale: 1.05, rotateZ: 1.5 }}
-                transition={{ type: "spring", stiffness: 400, damping: 20 }}
-              >
-                {book.cover_url ? (
-                  <img
-                    src={book.cover_url}
-                    alt={book.title}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="flex items-center justify-center h-full bg-gradient-to-br from-primary/10 to-primary/5">
-                    <BookOpen className="w-8 h-8 text-primary/40" />
-                  </div>
-                )}
-              </motion.div>
-
-              {/* Right: Book Info */}
-              <div className="flex flex-col flex-1 min-w-0">
-                {/* Title */}
-                <h3 className="text-base font-semibold text-xl text-foreground leading-snug line-clamp-2">
-                  {book.title}
-                </h3>
-
-                {/* Author */}
-                <p className="text-sm text-muted-foreground mt-1 line-clamp-1">
-                  {book.authors?.join(", ") || "Unknown Author"}
-                </p>
-
-                {/* Rating */}
-                {data.rating && (
-                  <div className="flex items-center gap-0.5 mt-2">
-                    {[...Array(5)].map((_, i) => (
-                      <Star
-                        key={i}
-                        className={cn(
-                          "w-4 h-4",
-                          i < ratingValue
-                            ? "fill-amber-400 text-amber-400"
-                            : "text-slate-200"
-                        )}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {/* Status */}
-                <div className="mt-2">
-                  <Badge
-                    className={cn(
-                      "text-xs font-medium border uppercase tracking-wide",
-                      getStatusColor(data.read_status)
-                    )}
-                  >
-                    {data.read_status}
-                  </Badge>
-                </div>
-
-                {/* Hover Hint */}
-                <div className="mt-auto pt-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                  <p className="text-xs text-primary/60 font-medium">
-                    Click to view details
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-        </motion.div>
-      </motion.div>
-    </>
+    <button
+      type="button"
+      onClick={() => onOpen(data)}
+      className={cn(
+        "group flex h-full w-full gap-3 rounded-xl border bg-card p-3 text-left shadow-sm transition",
+        "hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "sm:gap-4 sm:p-4",
+      )}
+    >
+      <BookCover url={book.cover_url} title={book.title} className="w-16 shrink-0 sm:w-20" />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <h3 className="line-clamp-2 font-serif text-base font-semibold leading-snug text-card-foreground sm:text-lg">
+          {book.title}
+        </h3>
+        <p className="mt-0.5 line-clamp-1 text-sm text-muted-foreground">
+          {book.authors?.length ? book.authors.join(", ") : "Unknown author"}
+          {book.published_year ? <span className="text-muted-foreground/70"> · {book.published_year}</span> : null}
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <StatusBadge status={data.read_status} />
+          {data.rating ? <StarRating value={data.rating} size="sm" /> : null}
+        </div>
+        <div className="mt-auto flex flex-wrap items-center gap-1 pt-2">
+          {data.genres.slice(0, 2).map((g) => (
+            <span key={g} className="max-w-[9rem] truncate rounded-full bg-secondary px-2 py-0.5 text-[11px] text-secondary-foreground">
+              {g}
+            </span>
+          ))}
+          {data.genres.length > 2 ? (
+            <span className="text-[11px] text-muted-foreground">+{data.genres.length - 2}</span>
+          ) : null}
+          {book.is_private ? (
+            <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-muted-foreground" title="Added manually, only visible to you">
+              <Lock className="size-3" /> Private
+            </span>
+          ) : data.has_overrides ? (
+            <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-muted-foreground" title="You edited this book's details">
+              <PenLine className="size-3" /> Edited
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </button>
   )
 }
 
-
-
+export function BookCardSkeleton() {
+  return (
+    <div className="flex gap-3 rounded-xl border bg-card p-3 sm:gap-4 sm:p-4">
+      <div className="aspect-[2/3] w-16 shrink-0 animate-pulse rounded-md bg-muted sm:w-20" />
+      <div className="flex flex-1 flex-col gap-2 py-1">
+        <div className="h-4 w-4/5 animate-pulse rounded bg-muted" />
+        <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
+        <div className="mt-2 h-4 w-20 animate-pulse rounded-full bg-muted" />
+      </div>
+    </div>
+  )
+}

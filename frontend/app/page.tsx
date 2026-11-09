@@ -1,53 +1,53 @@
+import { Suspense } from "react"
+import { BookMarked, Library, ScanLine, Share2 } from "lucide-react"
 import { AuthForm } from "@/components/auth-form"
-import { Library } from "lucide-react"
+import { ThemeToggle } from "@/components/theme-toggle"
+
+const FEATURES = [
+  { icon: ScanLine, text: "Scan a barcode or type an ISBN. We search several free catalogues at once." },
+  { icon: BookMarked, text: "Can't find it? Add it by hand, with a cover photo and text read from the blurb." },
+  { icon: Share2, text: "Group books into libraries and share any of them with a public link." },
+]
 
 export default function LoginPage() {
   return (
-    <main className="min-h-screen grid grid-cols-1 lg:grid-cols-2 bg-background overflow-hidden">
-      {/* Left Section: Branding & Slogan */}
-      <div className="hidden lg:flex flex-col justify-between p-12 xl:p-24 relative overflow-hidden">
-        {/* Subtle decorative elements */}
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] aspect-square bg-primary/5 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[30%] aspect-square bg-primary/5 rounded-full blur-3xl animate-pulse delay-700" />
+    <main className="relative grid min-h-[100dvh] grid-cols-1 bg-background lg:grid-cols-2">
+      <ThemeToggle className="absolute right-4 top-4 z-10" />
 
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 text-primary mb-24">
-            <Library className="w-8 h-8" />
-            <span className="text-2xl font-serif font-bold tracking-tight">Athenaeum</span>
-          </div>
-
-          <div className="max-w-xl space-y-8">
-            <h1 className="text-7xl xl:text-8xl font-serif text-foreground leading-[1.1]">
-              Optimal <br />
-              organization <br />
-              <span className="italic">meets</span> exquisite <br />
-              design
-            </h1>
-
-            <p className="text-xl text-muted-foreground leading-relaxed max-w-md">
-              Transform your digital collection into a functional work of art with our custom library management
-              solutions.
-            </p>
-          </div>
+      {/* Brand panel */}
+      <section className="relative hidden overflow-hidden bg-secondary/60 p-12 lg:flex lg:flex-col lg:justify-between xl:p-20">
+        <div className="pointer-events-none absolute -left-24 -top-24 size-96 rounded-full bg-primary/5 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -right-24 size-80 rounded-full bg-primary/5 blur-3xl" />
+        <div className="relative flex items-center gap-3 text-primary">
+          <Library className="size-8" />
+          <span className="font-serif text-2xl font-bold tracking-tight">Athenaeum</span>
         </div>
-
-        <div className="relative z-10 flex items-center gap-8 text-sm text-muted-foreground/60 font-medium tracking-wide uppercase">
-          <span>Established 1892</span>
-          <span className="w-1 h-1 bg-muted-foreground/30 rounded-full" />
-          <span>Curated for Excellence</span>
+        <div className="relative max-w-lg">
+          <h1 className="font-serif text-5xl leading-[1.1] text-foreground xl:text-6xl">
+            Every book you own, <span className="italic text-muted-foreground">beautifully catalogued.</span>
+          </h1>
+          <ul className="mt-10 space-y-4">
+            {FEATURES.map(({ icon: Icon, text }) => (
+              <li key={text} className="flex items-start gap-3 text-muted-foreground">
+                <Icon className="mt-0.5 size-5 shrink-0 text-primary" />
+                <span>{text}</span>
+              </li>
+            ))}
+          </ul>
         </div>
-      </div>
+        <p className="relative text-xs uppercase tracking-widest text-muted-foreground/70">Your personal library</p>
+      </section>
 
-      {/* Right Section: Auth Form */}
-      <div className="flex items-center justify-center p-6 md:p-12 relative">
-        {/* Mobile Logo */}
-        <div className="lg:hidden absolute top-8 left-8 flex items-center gap-2 text-primary">
-          <Library className="w-6 h-6" />
-          <span className="font-serif font-bold">Athenaeum</span>
+      {/* Form */}
+      <section className="flex flex-col items-center justify-center px-4 py-12 sm:px-8">
+        <div className="mb-8 flex items-center gap-2 text-primary lg:hidden">
+          <Library className="size-7" />
+          <span className="font-serif text-2xl font-bold tracking-tight">Athenaeum</span>
         </div>
-
-        <AuthForm />
-      </div>
+        <Suspense>
+          <AuthForm />
+        </Suspense>
+      </section>
     </main>
   )
 }

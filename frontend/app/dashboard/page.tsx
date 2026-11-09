@@ -1,280 +1,531 @@
 "use client"
 
 import * as React from "react"
-import { motion, AnimatePresence } from "framer-motion"
-import { Search, Plus, Loader2, BookOpen, LibraryIcon } from "lucide-react"
-import { AppSidebar } from "@/components/app-sidebar"
-import { BookCard, type ApiBook } from "@/components/book-card"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
-import { getToken, API_BASE_URL } from "@/lib/auth"
-import { useToast } from "@/hooks/use-toast"
-import { useRouter } from "next/navigation"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { BookOpen, Globe, Loader2, Plus, Search, Share2, SlidersHorizontal, X } from "lucide-react"
+import { toast } from "sonner"
+import { AppSidebar, ShareLibraryDialog } from "@/components/app-sidebar"
+import { AddBookModal } from "@/components/add-book/add-book-modal"
+import { BookCard, BookCardSkeleton } from "@/components/book-card"
 import { BookDetailView } from "@/components/book-detail-view"
-import { AddBookModal } from "@/components/add-book-modal"
+import { PaginationBar } from "@/components/pagination-bar"
+import { STATUS_META } from "@/components/status"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { useDebounce } from "@/hooks/use-debounce"
+import { api, errorMessage } from "@/lib/api"
+import { getToken } from "@/lib/auth"
+import type { Library, ReadStatus, UserBook } from "@/lib/types"
+import { cn } from "@/lib/utils"
+
+const PAGE_SIZE = 24
+
+const SORTS: { value: string; label: string; order: "asc" | "desc"; libraryOnly?: boolean }[] = [
+  { value: "added_at:desc", label: "Recently added to library", order: "desc", libraryOnly: true },
+  { value: "updated_at:desc", label: "Recently updated", order: "desc" },
+  { value: "created_at:desc", label: "Newest first", order: "desc" },
+  { value: "created_at:asc", label: "Oldest first", order: "asc" },
+  { value: "title:asc", label: "Title A–Z", order: "asc" },
+  { value: "title:desc", label: "Title Z–A", order: "desc" },
+  { value: "author:asc", label: "Author A–Z", order: "asc" },
+  { value: "rating:desc", label: "Highest rated", order: "desc" },
+  { value: "published_year:desc", label: "Publication year", order: "desc" },
+]
 
 function DashboardContent() {
-  const [books, setBooks] = React.useState<ApiBook[]>([])
-  const [activeLibraryId, setActiveLibraryId] = React.useState<string | null>(null)
-  const [isLibraryModalOpen, setIsLibraryModalOpen] = React.useState(false)
-  const [newLibName, setNewLibName] = React.useState("")
-  const [newLibPublic, setNewLibPublic] = React.useState(false)
-  const [isLoading, setIsLoading] = React.useState(true)
-  const [selectedBook, setSelectedBook] = React.useState<ApiBook | null>(null)
-  const { toast } = useToast()
   const router = useRouter()
-  const [searchQuery, setSearchQuery] = React.useState("")
-  const [isAddModalOpen, setIsAddModalOpen] = React.useState(false)
+  const pathname = usePathname()
+  const params = useSearchParams()
 
-  const fetchBooks = React.useCallback(async () => {
-    const token = getToken()
-    if (!token) {
-      router.push("/")
-      return
-    }
+  // ---- URL state
+  const activeLibraryId = params.get("lib")
+  const page = Math.max(1, Number(params.get("page")) || 1)
+  const genre = params.get("genre") ?? ""
+  const status = (params.get("status") ?? "") as ReadStatus | ""
+  const minRating = Number(params.get("rating")) || 0
+  const defaultSort = activeLibraryId ? "added_at:desc" : "updated_at:desc"
+  const sortParam = params.get("sort") ?? defaultSort
+  const sortValue = SORTS.some((s) => s.value === sortParam && (!s.libraryOnly || activeLibraryId)) ? sortParam : defaultSort
+  const [sort, order] = sortValue.split(":") as [string, "asc" | "desc"]
 
-    try {
-      const endpoint = activeLibraryId
-        ? `${API_BASE_URL}/librarybooks/${activeLibraryId}?${searchQuery}`
-        : `${API_BASE_URL}/books?q=${searchQuery}`
-
-      const response = await fetch(endpoint, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        if (activeLibraryId) {
-          setBooks(Array.isArray(data.books) ? data.books : [])
-          return
-        } else {
-          setBooks(Array.isArray(data.items) ? data.items : [])
-        }
+  const setParams = React.useCallback(
+    (patch: Record<string, string | number | null>, resetPage = true) => {
+      const next = new URLSearchParams(params.toString())
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === null || v === "" || v === 0) next.delete(k)
+        else next.set(k, String(v))
       }
-    } catch (error) {
-      toast({
-        title: "Error fetching library",
-        description: "Could not sync with your collection.",
-        variant: "destructive",
-      })
+      if (resetPage && !("page" in patch)) next.delete("page")
+      const qs = next.toString()
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    },
+    [params, pathname, router],
+  )
+
+  const [search, setSearch] = React.useState(params.get("q") ?? "")
+  const debouncedSearch = useDebounce(search.trim(), 350)
+  React.useEffect(() => {
+    if ((params.get("q") ?? "") !== debouncedSearch) setParams({ q: debouncedSearch })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch])
+  const q = params.get("q") ?? ""
+
+  // ---- auth guard
+  const [ready, setReady] = React.useState(false)
+  React.useEffect(() => {
+    if (!getToken()) router.replace("/")
+    else setReady(true)
+  }, [router])
+
+  // ---- data
+  const [user, setUser] = React.useState<{ email: string; name?: string | null } | null>(null)
+  const [libraries, setLibraries] = React.useState<Library[]>([])
+  const [librariesLoading, setLibrariesLoading] = React.useState(true)
+  const [facets, setFacets] = React.useState<{ genres: string[]; tags: string[] }>({ genres: [], tags: [] })
+  const [books, setBooks] = React.useState<UserBook[]>([])
+  const [total, setTotal] = React.useState(0)
+  const [totalPages, setTotalPages] = React.useState(0)
+  const [allCount, setAllCount] = React.useState<number | null>(null)
+  const [loading, setLoading] = React.useState(true)
+  const [loadError, setLoadError] = React.useState<string | null>(null)
+  const [reloadKey, setReloadKey] = React.useState(0)
+
+  const [selected, setSelected] = React.useState<UserBook | null>(null)
+  const [addOpen, setAddOpen] = React.useState(false)
+  const [shareLib, setShareLib] = React.useState<Library | null>(null)
+  const [mobileSearch, setMobileSearch] = React.useState(false)
+
+  const loadLibraries = React.useCallback(async () => {
+    try {
+      setLibraries(await api.libraries())
+    } catch (e) {
+      toast.error(errorMessage(e))
     } finally {
-      setIsLoading(false)
+      setLibrariesLoading(false)
     }
-  }, [searchQuery, activeLibraryId, router, toast])
+  }, [])
+
+  const loadFacets = React.useCallback(() => {
+    api.facets().then(setFacets).catch(() => {})
+  }, [])
 
   React.useEffect(() => {
-    setIsLoading(true)
-    fetchBooks()
-  }, [fetchBooks])
+    if (!ready) return
+    api.me().then(setUser).catch(() => {})
+    loadLibraries()
+    loadFacets()
+  }, [ready, loadLibraries, loadFacets])
 
-  const handleCreateLibrary = async () => {
-    const token = getToken()
-    try {
-      const response = await fetch(`${API_BASE_URL}/library`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ name: newLibName, is_public: newLibPublic }),
+  React.useEffect(() => {
+    if (!ready) return
+    const ctrl = new AbortController()
+    setLoading(true)
+    setLoadError(null)
+    const query = {
+      q,
+      genre,
+      read_status: status,
+      min_rating: minRating || "",
+      page,
+      page_size: PAGE_SIZE,
+      sort,
+      order,
+    } as const
+    const req = activeLibraryId
+      ? api.listLibraryBooks(activeLibraryId, query, ctrl.signal)
+      : api.listBooks(query, ctrl.signal)
+    req
+      .then((res) => {
+        setBooks(res.items)
+        setTotal(res.total)
+        setTotalPages(res.total_pages)
+        if (!activeLibraryId && !q && !genre && !status && !minRating) setAllCount(res.total)
+        if (res.total_pages && page > res.total_pages) setParams({ page: res.total_pages }, false)
       })
+      .catch((e) => {
+        if ((e as Error)?.name === "AbortError") return
+        if ((e as { status?: number }).status === 404 && activeLibraryId) {
+          toast.error("That library no longer exists")
+          setParams({ lib: null })
+          return
+        }
+        setLoadError(errorMessage(e))
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setLoading(false)
+      })
+    return () => ctrl.abort()
+  }, [ready, activeLibraryId, q, genre, status, minRating, page, sort, order, reloadKey, setParams])
 
-      if (response.ok) {
-        toast({ title: "Library created" })
-        setIsLibraryModalOpen(false)
-        setNewLibName("")
-        window.location.reload()
-      }
-    } catch (error) {
-      toast({ title: "Failed to create library", variant: "destructive" })
-    }
+  React.useEffect(() => {
+    if (!ready || allCount !== null) return
+    api.listBooks({ page_size: 1 }).then((r) => setAllCount(r.total)).catch(() => {})
+  }, [ready, allCount])
+
+  const refreshAll = () => {
+    setReloadKey((k) => k + 1)
+    setAllCount(null)
+    loadLibraries()
+    loadFacets()
   }
 
-  const handleDelete = async (id: string) => {
-    const token = getToken()
-    try {
-      const endpoint = activeLibraryId ? `${API_BASE_URL}/librarybooks/${activeLibraryId}` : `${API_BASE_URL}/books`
+  const activeLibrary = libraries.find((l) => l.id === activeLibraryId) ?? null
+  const filterCount = (genre ? 1 : 0) + (status ? 1 : 0) + (minRating ? 1 : 0)
+  const hasQuery = !!(q || filterCount)
 
-      const response = await fetch(endpoint, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ user_book_ids: [id] }),
-      })
-
-      if (response.ok) {
-        fetchBooks()
-        toast({ title: "Book removed successfully" })
-      }
-    } catch (error) {
-      toast({ title: "Failed to remove book", variant: "destructive" })
-    }
+  const clearFilters = () => {
+    setSearch("")
+    setParams({ q: null, genre: null, status: null, rating: null })
   }
+
+  if (!ready) return null
 
   return (
-    <div className="flex min-h-screen w-full bg-gradient-to-br from-slate-50 to-slate-100">
-      <AppSidebar activeLibraryId={activeLibraryId} onLibrarySelect={(id) => setActiveLibraryId(id)} />
-      <SidebarInset>
-        {/* Header */}
-        <header className="flex h-16 shrink-0 items-center justify-between gap-2 px-6 md:px-8 transition-[width,height] ease-linear group-has-data-[view=sidebar]/sidebar-wrapper:h-12 border-b border-slate-200/50 bg-white/80 backdrop-blur-md sticky top-0 z-10">
-          <div className="flex items-center gap-4">
-            <SidebarTrigger className="-ml-1" />
-            <div className="h-4 w-px bg-slate-200" />
-            <h1 className="text-lg font-semibold text-foreground hidden sm:block">
-              {activeLibraryId ? "Custom Library" : "My Library"}
+    <SidebarProvider>
+      <AppSidebar
+        libraries={libraries}
+        loading={librariesLoading}
+        activeLibraryId={activeLibraryId}
+        onLibrarySelect={(id) => {
+          setSearch("")
+          const qs = id ? `?lib=${id}` : ""
+          router.replace(`${pathname}${qs}`, { scroll: false })
+        }}
+        onLibrariesChange={loadLibraries}
+        totalBooks={allCount}
+        user={user}
+      />
+      <SidebarInset className="min-w-0">
+        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background/85 px-3 backdrop-blur-md sm:h-16 sm:gap-3 sm:px-6 md:rounded-t-xl">
+          <SidebarTrigger className="-ml-1 shrink-0" />
+          <div className={cn("flex min-w-0 items-center gap-2", mobileSearch && "hidden sm:flex")}>
+            <h1 className="truncate font-serif text-lg font-semibold sm:text-xl">
+              {activeLibraryId ? activeLibrary?.name ?? "Library" : "All my books"}
             </h1>
+            {activeLibrary ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 shrink-0 rounded-full"
+                onClick={() => setShareLib(activeLibrary)}
+                aria-label="Share library"
+                title={activeLibrary.is_public ? "Public. Click to share." : "Private. Click to share."}
+              >
+                {activeLibrary.is_public ? <Globe className="size-4 text-[color:var(--success)]" /> : <Share2 className="size-4" />}
+              </Button>
+            ) : null}
           </div>
 
-          <div className="flex items-center gap-3 flex-1 max-w-sm mx-4 md:mx-8">
-            <div className="relative w-full">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
+          <div className={cn("ml-auto flex min-w-0 items-center gap-2", mobileSearch && "flex-1")}>
+            <div className={cn("relative hidden w-full sm:block sm:w-56 lg:w-80", mobileSearch && "block")}>
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search books..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 h-10 bg-slate-100/50 border-slate-200/50 rounded-full focus-visible:ring-1 focus-visible:ring-primary/30 text-sm"
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search title, author, tag…"
+                maxLength={200}
+                autoFocus={mobileSearch}
+                onBlur={() => !search && setMobileSearch(false)}
+                className="h-9 rounded-full bg-muted/60 pl-9 sm:h-10"
+                aria-label="Search books"
               />
             </div>
-          </div>
+            {!mobileSearch ? (
+              <Button variant="ghost" size="icon" className="sm:hidden" onClick={() => setMobileSearch(true)} aria-label="Search">
+                <Search className="size-5" />
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="sm:hidden"
+                onClick={() => {
+                  setSearch("")
+                  setMobileSearch(false)
+                }}
+                aria-label="Close search"
+              >
+                <X className="size-5" />
+              </Button>
+            )}
 
-          <div className="flex items-center gap-2 md:gap-3">
-            <Button onClick={() => setIsAddModalOpen(true)} className="h-10 rounded-full gap-2 shadow-lg shadow-primary/10 text-sm">
-              <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">Add</span>
+            <FilterPopover
+              genres={facets.genres}
+              genre={genre}
+              status={status}
+              minRating={minRating}
+              sortValue={sortValue}
+              inLibrary={!!activeLibraryId}
+              count={filterCount}
+              onChange={setParams}
+            />
+
+            <Button onClick={() => setAddOpen(true)} className="h-9 shrink-0 gap-1.5 rounded-full px-3 sm:h-10 sm:px-4">
+              <Plus className="size-4" />
+              <span className="hidden sm:inline">Add book</span>
             </Button>
           </div>
         </header>
 
-        <AddBookModal
-          open={isAddModalOpen}
-          onClose={() => setIsAddModalOpen(false)}
-          onBookAdded={fetchBooks}
-        />
+        <main className="flex-1 px-3 py-4 sm:px-6 sm:py-6">
+          {hasQuery ? (
+            <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-muted-foreground">
+                {loading ? "Searching…" : `${total} result${total === 1 ? "" : "s"}`}
+              </span>
+              {q ? <Chip onRemove={() => { setSearch(""); setParams({ q: null }) }}>“{q}”</Chip> : null}
+              {genre ? <Chip onRemove={() => setParams({ genre: null })}>{genre}</Chip> : null}
+              {status ? <Chip onRemove={() => setParams({ status: null })}>{STATUS_META[status].label}</Chip> : null}
+              {minRating ? <Chip onRemove={() => setParams({ rating: null })}>{minRating}★ and up</Chip> : null}
+              <button onClick={clearFilters} className="text-xs text-muted-foreground underline-offset-2 hover:underline">
+                Clear all
+              </button>
+            </div>
+          ) : null}
 
-        {/* Main Content */}
-        <main className="flex-1 p-4 md:p-8">
-          {isLoading ? (
-            <motion.div
-              className="flex flex-col items-center justify-center min-h-[60vh] gap-4"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-            >
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 2, repeat: Number.POSITIVE_INFINITY, ease: "linear" }}
-              >
-                <Loader2 className="w-8 h-8 text-primary/40" />
-              </motion.div>
-              <p className="text-sm text-muted-foreground font-medium italic">Opening the archives...</p>
-            </motion.div>
-          ) : books.length > 0 ? (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-max">
-                <AnimatePresence>
-                  {books.map((book) => (
-                    <div key={book.user_book_id} onClick={() => setSelectedBook(book)} role="button" tabIndex={0}>
-                      <BookCard data={book} />
-                    </div>
-                  ))}
-                </AnimatePresence>
-              </div>
-
-              <AnimatePresence>
-                {selectedBook && (
-                  <BookDetailView
-                    book={selectedBook}
-                    onClose={() => setSelectedBook(null)}
-                    onDelete={(id) => {
-                      setBooks((prev) => prev.filter((b) => b.user_book_id !== id))
-                      setSelectedBook(null)
-                    }}
-                    onRefresh={fetchBooks}
-                    libraryId={activeLibraryId}
-                  />
-                )}
-              </AnimatePresence>
-            </>
-          ) : (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col items-center justify-center min-h-[60vh] text-center"
-            >
-              <motion.div
-                className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-6"
-                animate={{ scale: [1, 1.05, 1] }}
-                transition={{ duration: 2, repeat: Number.POSITIVE_INFINITY }}
-              >
-                <BookOpen className="w-10 h-10 text-primary/30" />
-              </motion.div>
-              <h2 className="text-2xl font-semibold mb-2 text-foreground">Your library is waiting</h2>
-              <p className="text-muted-foreground max-w-sm mb-8">
-                Start your digital archive by adding your first book to the collection.
-              </p>
-              <Button
-                variant="outline"
-                className="h-12 rounded-full px-8 border-slate-200/50 hover:bg-slate-100 text-foreground bg-transparent"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Begin Collection
+          {loadError ? (
+            <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-center">
+              <p className="text-muted-foreground">{loadError}</p>
+              <Button variant="outline" onClick={() => setReloadKey((k) => k + 1)}>
+                Try again
               </Button>
-            </motion.div>
-          )}
-        </main>
-
-        {/* Create Library Dialog */}
-        <Dialog open={isLibraryModalOpen} onOpenChange={setIsLibraryModalOpen}>
-          <DialogContent className="sm:max-w-md rounded-2xl border-slate-200/50 shadow-2xl">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.2 }}
-            >
-              <DialogHeader>
-                <DialogTitle className="text-2xl font-semibold text-foreground">Create New Library</DialogTitle>
-              </DialogHeader>
-              <div className="grid gap-6 py-4">
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold tracking-widest uppercase text-muted-foreground">
-                    Library Name
-                  </Label>
-                  <Input
-                    value={newLibName}
-                    onChange={(e) => setNewLibName(e.target.value)}
-                    placeholder="e.g. Rare Editions"
-                    className="h-10 bg-slate-100/50 border-slate-200/50 rounded-lg text-sm"
-                  />
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="public"
-                    checked={newLibPublic}
-                    onCheckedChange={(checked) => setNewLibPublic(!!checked)}
-                  />
-                  <Label htmlFor="public" className="text-sm font-medium cursor-pointer">
-                    Make library public
-                  </Label>
-                </div>
+            </div>
+          ) : loading && !books.length ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3 2xl:grid-cols-4">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <BookCardSkeleton key={i} />
+              ))}
+            </div>
+          ) : books.length ? (
+            <>
+              <div
+                className={cn(
+                  "grid grid-cols-1 gap-3 transition-opacity sm:grid-cols-2 sm:gap-4 xl:grid-cols-3 2xl:grid-cols-4",
+                  loading && "opacity-60",
+                )}
+                aria-busy={loading}
+              >
+                {books.map((b) => (
+                  <BookCard key={b.user_book_id} data={b} onOpen={setSelected} />
+                ))}
               </div>
-              <DialogFooter>
-                <Button onClick={handleCreateLibrary} className="w-full h-10 rounded-lg">
-                  Create Collection
+              <PaginationBar
+                className="mt-8"
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                pageSize={PAGE_SIZE}
+                onPageChange={(p) => {
+                  setParams({ page: p }, false)
+                  window.scrollTo({ top: 0, behavior: "smooth" })
+                }}
+              />
+            </>
+          ) : hasQuery ? (
+            <EmptyState
+              title="No books match"
+              text="Try a different search or remove some filters."
+              action={<Button variant="outline" onClick={clearFilters}>Clear filters</Button>}
+            />
+          ) : (
+            <EmptyState
+              title={activeLibraryId ? "This library is empty" : "Your library is waiting"}
+              text={
+                activeLibraryId
+                  ? "Add a new book here, or open any book in All my books and add it to this library."
+                  : "Scan a barcode, type an ISBN or add a book by hand to start your collection."
+              }
+              action={
+                <Button onClick={() => setAddOpen(true)} className="rounded-full px-6">
+                  <Plus className="size-4" /> Add your first book
                 </Button>
-              </DialogFooter>
-            </motion.div>
-          </DialogContent>
-        </Dialog>
+              }
+            />
+          )}
+          {loading && books.length ? (
+            <div className="pointer-events-none fixed bottom-6 left-1/2 z-30 -translate-x-1/2 rounded-full bg-foreground/90 px-3 py-1.5 text-xs text-background shadow-lg">
+              <Loader2 className="mr-1 inline size-3 animate-spin" /> Loading
+            </div>
+          ) : null}
+        </main>
       </SidebarInset>
+
+      <AddBookModal
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        libraries={libraries}
+        activeLibraryId={activeLibraryId}
+        facets={facets}
+        onAdded={refreshAll}
+      />
+
+      {selected ? (
+        <BookDetailView
+          book={selected}
+          onClose={() => setSelected(null)}
+          libraryId={activeLibraryId}
+          libraries={libraries}
+          facets={facets}
+          onChanged={(updated) => {
+            setSelected(updated)
+            setBooks((prev) => prev.map((b) => (b.user_book_id === updated.user_book_id ? { ...b, ...updated } : b)))
+            loadLibraries()
+            loadFacets()
+          }}
+          onRemoved={() => {
+            setSelected(null)
+            refreshAll()
+          }}
+        />
+      ) : null}
+
+      <ShareLibraryDialog
+        library={shareLib}
+        onClose={() => setShareLib(null)}
+        onChanged={(lib) => {
+          setShareLib(lib)
+          loadLibraries()
+        }}
+      />
+    </SidebarProvider>
+  )
+}
+
+function FilterPopover({
+  genres,
+  genre,
+  status,
+  minRating,
+  sortValue,
+  inLibrary,
+  count,
+  onChange,
+}: {
+  genres: string[]
+  genre: string
+  status: string
+  minRating: number
+  sortValue: string
+  inLibrary: boolean
+  count: number
+  onChange: (p: Record<string, string | number | null>) => void
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="icon" className="relative size-9 shrink-0 rounded-full sm:size-10" aria-label="Filter and sort">
+          <SlidersHorizontal className="size-4" />
+          {count ? (
+            <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+              {count}
+            </span>
+          ) : null}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[min(20rem,calc(100vw-1.5rem))] space-y-4">
+        <div className="grid gap-1.5">
+          <Label>Sort by</Label>
+          <Select value={sortValue} onValueChange={(v) => onChange({ sort: v })}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SORTS.filter((s) => !s.libraryOnly || inLibrary).map((s) => (
+                <SelectItem key={s.value} value={s.value}>
+                  {s.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid gap-1.5">
+          <Label>Reading status</Label>
+          <Select value={status || "all"} onValueChange={(v) => onChange({ status: v === "all" ? null : v })}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Any status</SelectItem>
+              {(Object.keys(STATUS_META) as ReadStatus[]).map((s) => (
+                <SelectItem key={s} value={s}>
+                  {STATUS_META[s].label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid gap-1.5">
+          <Label>Genre</Label>
+          <Select value={genre || "all"} onValueChange={(v) => onChange({ genre: v === "all" ? null : v })}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="max-h-72">
+              <SelectItem value="all">Any genre</SelectItem>
+              {genres.map((g) => (
+                <SelectItem key={g} value={g}>
+                  {g}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid gap-1.5">
+          <Label>Minimum rating</Label>
+          <div className="grid grid-cols-6 gap-1">
+            {[0, 1, 2, 3, 4, 5].map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => onChange({ rating: r || null })}
+                className={cn(
+                  "rounded-md border py-1.5 text-xs font-medium transition",
+                  minRating === r ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted",
+                )}
+              >
+                {r ? `${r}★` : "Any"}
+              </button>
+            ))}
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function Chip({ children, onRemove }: { children: React.ReactNode; onRemove: () => void }) {
+  return (
+    <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-secondary py-0.5 pl-3 pr-1 text-xs text-secondary-foreground">
+      <span className="truncate">{children}</span>
+      <button onClick={onRemove} className="inline-flex size-5 items-center justify-center rounded-full hover:bg-foreground/10" aria-label="Remove filter">
+        <X className="size-3" />
+      </button>
+    </span>
+  )
+}
+
+function EmptyState({ title, text, action }: { title: string; text: string; action?: React.ReactNode }) {
+  return (
+    <div className="flex min-h-[55vh] flex-col items-center justify-center px-4 text-center">
+      <div className="mb-5 flex size-16 items-center justify-center rounded-full bg-secondary">
+        <BookOpen className="size-8 text-muted-foreground" />
+      </div>
+      <h2 className="font-serif text-2xl font-semibold">{title}</h2>
+      <p className="mb-6 mt-2 max-w-sm text-sm text-muted-foreground">{text}</p>
+      {action}
     </div>
   )
 }
 
 export default function DashboardPage() {
-  return <DashboardContent />
+  return (
+    <React.Suspense fallback={null}>
+      <DashboardContent />
+    </React.Suspense>
+  )
 }

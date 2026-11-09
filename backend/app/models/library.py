@@ -1,22 +1,34 @@
-from pydantic import BaseModel, Field
-from typing import Optional
-from datetime import datetime
+from typing import Annotated, Optional
 
-class LibraryBase(BaseModel):
-    name: str = Field(..., example="My Fantasy Library")
+from pydantic import AfterValidator, BaseModel, Field
+
+from app.models.common import IdList
+from app.utils.text import clean_str
+
+
+def _name(v: str) -> str:
+    v = clean_str(v, 100)
+    if not v:
+        raise ValueError("Library name is required")
+    return v
+
+
+LibraryName = Annotated[str, Field(max_length=200), AfterValidator(_name)]
+
+
+class LibraryCreate(BaseModel):
+    name: LibraryName
     is_public: bool = False
 
-class LibraryCreate(LibraryBase):
-    pass
 
 class LibraryUpdate(BaseModel):
-    name: Optional[str] = Field(None, example="My Fantasy Library")
+    name: Optional[LibraryName] = None
     is_public: Optional[bool] = None
 
-class LibraryInDB(LibraryBase):
-    id: str
-    user_id: str
-    is_default: bool
-    slug: str
-    created_at: datetime
-    updated_at: datetime
+
+class LibraryBooksCreate(BaseModel):
+    user_book_ids: IdList = Field(min_length=1)
+
+
+class LibraryBooksRemove(BaseModel):
+    user_book_ids: IdList = Field(min_length=1)

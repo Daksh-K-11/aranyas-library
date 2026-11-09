@@ -1,254 +1,110 @@
-from fastapi import APIRouter, Depends, status, Query, HTTPException
-from datetime import datetime
-from bson import ObjectId
 from typing import Optional
-import re
 
-from app.models.library_books import LibraryBooksCreate, LibraryBooksRemove
-from app.auth.permissions import get_library_owned_by_user
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+
 from app.auth.deps import get_current_user
-from app.db.mongodb import library_books_collection, libraries_collection
-from app.utils.find_missing_ids import find_missing_ids
-from app.utils.to_object_id import to_object_ids
+from app.db.mongodb import libraries_collection, library_books_collection, user_books_collection
+from app.models.library import LibraryBooksCreate, LibraryBooksRemove
+from app.models.user_books import ReadStatus
+from app.services.library_ops import add_to_libraries, get_owned_library, owned_user_book_ids
+from app.services.listing import (
+    PRIVATE_PROJECTION,
+    build_listing_pipeline,
+    run_listing,
+    serialize_private,
+    user_book_match,
+)
+from app.utils.ids import parse_oid
 
-router = APIRouter(prefix="/librarybooks", tags=["library_books"])
+router = APIRouter(prefix="/librarybooks", tags=["Library books"])
 
-@router.get("/missing-libraries")
-async def get_missing_library_ids(
-    user_book_id: str = Query(...),
-    user_id: str = Depends(get_current_user)
-):
-    if not ObjectId.is_valid(user_book_id):
-        raise HTTPException(status_code=400, detail="Invalid user_book_id")
+SORT_PATTERN = "^(added_at|updated_at|created_at|rating|title|author|published_year)$"
 
-    user_book_obj_id = ObjectId(user_book_id)
 
-    pipeline = [
+def library_user_books_stages(library_id, user_id: Optional[str], match: dict) -> list:
+    """Turn library_books rows into user_books documents (with added_at)."""
+    ub_match = {**match}
+    if user_id is not None:
+        ub_match["user_id"] = user_id
+    return [
+        {"$match": {"library_id": library_id}},
         {
             "$lookup": {
-                "from": "library_books",
-                "let": {"libraryId": "$_id"},
-                "pipeline": [
-                    {
-                        "$match": {
-                            "$expr": {
-                                "$and": [
-                                    {"$eq": ["$library_id", "$$libraryId"]},
-                                    {"$eq": ["$user_book_id", user_book_obj_id]}
-                                ]
-                            }
-                        }
-                    }
-                ],
-                "as": "book_match"
+                "from": "user_books",
+                "localField": "user_book_id",
+                "foreignField": "_id",
+                "as": "ub",
+                "pipeline": [{"$match": ub_match}] if ub_match else [],
             }
         },
-        {
-            "$match": {
-                "user_id": user_id,
-                "book_match": {"$size": 0}
-            }
-        },
-        {
-            "$project": {
-                "book_match": 0
-            }
-        }
+        {"$unwind": "$ub"},
+        {"$replaceRoot": {"newRoot": {"$mergeObjects": ["$ub", {"added_at": "$added_at"}]}}},
     ]
 
-    missing_libraries = await libraries_collection.aggregate(pipeline).to_list(length=None)
 
-    for lib in missing_libraries:
-        lib["_id"] = str(lib["_id"])
+@router.get("/missing-libraries")
+async def get_missing_library_ids(user_book_id: str = Query(...), user_id: str = Depends(get_current_user)):
+    """Libraries of this user that do not contain the given book yet."""
+    ub_oid = parse_oid(user_book_id, "book id")
+    if not await user_books_collection.find_one({"_id": ub_oid, "user_id": user_id}, {"_id": 1}):
+        raise HTTPException(404, "Book not found")
 
-    return {
-        "count": len(missing_libraries),
-        "libraries": missing_libraries
-    }
-
+    present = await library_books_collection.distinct("library_id", {"user_book_id": ub_oid})
+    libs = [
+        {"id": str(lib["_id"]), "_id": str(lib["_id"]), "name": lib["name"], "is_public": lib.get("is_public", False)}
+        async for lib in libraries_collection.find({"user_id": user_id, "_id": {"$nin": present}}).sort("name", 1)
+    ]
+    member = [
+        {"id": str(lib["_id"]), "name": lib["name"]}
+        async for lib in libraries_collection.find({"user_id": user_id, "_id": {"$in": present}}).sort("name", 1)
+    ]
+    return {"count": len(libs), "libraries": libs, "member_of": member}
 
 
 @router.post("/{library_id}", status_code=status.HTTP_201_CREATED)
-async def add_books_to_library(
-    library_id: str,    
-    data: LibraryBooksCreate,
-    user_id: str = Depends(get_current_user)
-):
-    lib = await get_library_owned_by_user(library_id, user_id)
-    ops = []
-    now = datetime.utcnow()
-    
-    missing_books_id = await find_missing_ids(
-        ids=data.user_book_ids,
-        doc_id=library_id,
-        collection=library_books_collection
-    )
-
-    for ub_id in missing_books_id:
-        ops.append({
-            "library_id": lib["_id"],
-            "user_book_id": ObjectId(ub_id),
-            "added_at": now
-        })
-    
-    if ops:
-        await library_books_collection.insert_many(ops, ordered=False)
-    return {"message": "Books added"}
+async def add_books_to_library(library_id: str, data: LibraryBooksCreate, user_id: str = Depends(get_current_user)):
+    lib = await get_owned_library(library_id, user_id)
+    ids = await owned_user_book_ids(user_id, data.user_book_ids)
+    if not ids:
+        raise HTTPException(404, "No matching books")
+    added = await add_to_libraries(user_id, ids, [str(lib["_id"])])
+    return {"message": "Books added", "added": added}
 
 
 @router.get("/{library_id}")
 async def view_library_books(
     library_id: str,
     user_id: str = Depends(get_current_user),
-    
-    # Filters
-    q: Optional[str] = None,
-    genre: Optional[str] = None,
-    read_status: Optional[str] = None,
-    min_rating: Optional[int] = None,
-
-    # Pagination & sorting
-    limit: int = Query(20, ge=1, le=50),
-    sort: str = Query("updated_at", pattern="^(updated_at|rating|title)$"),
+    q: Optional[str] = Query(None, max_length=200),
+    genre: Optional[str] = Query(None, max_length=40),
+    read_status: Optional[ReadStatus] = None,
+    min_rating: Optional[int] = Query(None, ge=1, le=5),
+    page: int = Query(1, ge=1, le=10000),
+    page_size: int = Query(24, ge=1, le=60),
+    sort: str = Query("added_at", pattern=SORT_PATTERN),
     order: str = Query("desc", pattern="^(asc|desc)$"),
-    cursor: Optional[str] = None,
 ):
-    lib = await get_library_owned_by_user(library_id, user_id)
-
-    direction = -1 if order == "desc" else 1
-
-    # Base match (library scope)
-    match: dict = {
-        "library_id": lib["_id"]
-    }
-
-    pipeline = [
-        {"$match": match},
-
-        # 🔗 Join user_books
-        {
-            "$lookup": {
-                "from": "user_books",
-                "localField": "user_book_id",
-                "foreignField": "_id",
-                "as": "user_book"
-            }
-        },
-        {"$unwind": "$user_book"},
-    ]
-
-    # 🔍 Filters on user_books
-    user_book_match = {"user_book.user_id": user_id}
-
-    if q:
-        escaped = re.escape(q.strip().lower())
-        user_book_match["user_book.search_blob"] = {
-            "$regex": escaped,
-            "$options": "i"
-        }
-
-    if genre:
-        user_book_match["user_book.genres"] = genre
-
-    if read_status:
-        user_book_match["user_book.read_status"] = read_status
-
-    if min_rating is not None:
-        user_book_match["user_book.rating"] = {"$gte": min_rating}
-
-    # ⏱ Cursor pagination (based on user_book.updated_at)
-    if cursor:
-        cursor_dt = datetime.fromisoformat(cursor)
-        user_book_match["user_book.updated_at"] = {"$lt": cursor_dt}
-
-    pipeline.append({"$match": user_book_match})
-
-    # 🔗 Join books
-    pipeline.extend([
-        {
-            "$lookup": {
-                "from": "books",
-                "localField": "user_book.book_id",
-                "foreignField": "_id",
-                "as": "book"
-            }
-        },
-        {"$unwind": "$book"},
-    ])
-
-    # 🔀 Sorting
-    sort_field = (
-        "book.title"
-        if sort == "title"
-        else f"user_book.{sort}"
+    lib = await get_owned_library(library_id, user_id)
+    match = user_book_match(q=q, genre=genre, read_status=read_status, min_rating=min_rating)
+    pipeline = library_user_books_stages(lib["_id"], user_id, match) + build_listing_pipeline(
+        sort=sort, order=order, page=page, page_size=page_size, project=PRIVATE_PROJECTION
     )
-
-    pipeline.extend([
-        {
-            "$sort": {
-                sort_field: direction,
-                "_id": direction
-            }
-        },
-
-        # 📄 Pagination
-        {"$limit": limit + 1},
-    ])
-
-    cursor_db = library_books_collection.aggregate(pipeline)
-
-    items = []
-    async for doc in cursor_db:
-        book = dict(doc["book"])
-        book["id"] = str(book["_id"])
-        del book["_id"]
-
-        items.append({
-            "user_book_id": str(doc["user_book"]["_id"]),
-
-            # global book
-            "book": book,
-
-            # user editable
-            "genres": doc["user_book"]["genres"],
-            "tags": doc["user_book"]["tags"],
-            "rating": doc["user_book"]["rating"],
-            "read_status": doc["user_book"]["read_status"],
-            "personal_notes": doc["user_book"].get("personal_notes"),
-            "updated_at": doc["user_book"]["updated_at"],
-        })
-
-    next_cursor = None
-    if len(items) > limit:
-        last = items.pop()
-        next_cursor = last["updated_at"].isoformat()
-
-    return {
-        "library": {
-            "id": str(lib["_id"]),
-            "name": lib["name"],
-            "is_public": lib["is_public"],
-            "is_default": lib["is_default"],
-        },
-        "books": items,
-        "next_cursor": next_cursor,
-        "limit": limit,
+    result = await run_listing(library_books_collection, pipeline, page, page_size, serialize_private)
+    result["library"] = {
+        "id": str(lib["_id"]),
+        "name": lib["name"],
+        "is_public": lib.get("is_public", False),
+        "is_default": lib.get("is_default", False),
+        "slug": lib["slug"],
     }
+    return result
 
 
 @router.delete("/{library_id}")
 async def remove_books_from_library(
-    library_id: str,
-    data: LibraryBooksRemove,
-    user_id: str = Depends(get_current_user)
+    library_id: str, data: LibraryBooksRemove, user_id: str = Depends(get_current_user)
 ):
-    lib = await get_library_owned_by_user(library_id, user_id)
-
-    await library_books_collection.delete_many({
-        "library_id": lib["_id"],
-        "user_book_id": {"$in": [ObjectId(i) for i in data.user_book_ids]}
-    })
-
-    return {"message": "Books removed from library"}
-
-
+    lib = await get_owned_library(library_id, user_id)
+    ids = await owned_user_book_ids(user_id, data.user_book_ids)
+    res = await library_books_collection.delete_many({"library_id": lib["_id"], "user_book_id": {"$in": ids}})
+    return {"message": "Books removed from library", "removed": res.deleted_count}

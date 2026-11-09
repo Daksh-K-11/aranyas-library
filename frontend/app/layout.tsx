@@ -1,10 +1,9 @@
 import type React from "react"
-import type { Metadata } from "next"
-import { Inter, Playfair_Display, Poppins } from "next/font/google"
-import { Toaster } from "@/components/ui/toaster"
+import type { Metadata, Viewport } from "next"
+import { Playfair_Display, Poppins } from "next/font/google"
+import { ThemeProvider } from "@/components/theme-provider"
+import { Toaster } from "@/components/ui/sonner"
 import "./globals.css"
-import { SidebarProvider } from "@/components/ui/sidebar"
-
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -12,27 +11,39 @@ const poppins = Poppins({
   variable: "--font-poppins",
   display: "swap",
 })
-const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
-const playfair = Playfair_Display({ subsets: ["latin"], variable: "--font-serif" })
+const playfair = Playfair_Display({ subsets: ["latin"], variable: "--font-playfair", display: "swap" })
 
 export const metadata: Metadata = {
-  title: "Athenaeum | Library Management",
-  description: "Optimal organization meets exquisite design.",
-  generator: 'v0.app'
+  title: { default: "Athenaeum · Personal Library", template: "%s · Athenaeum" },
+  description: "Catalogue your books, organise them into libraries and share them with a link.",
+  icons: {
+    icon: [
+      { url: "/icon-light-32x32.png", media: "(prefers-color-scheme: light)" },
+      { url: "/icon-dark-32x32.png", media: "(prefers-color-scheme: dark)" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: "/apple-icon.png",
+  },
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f8f5f0" },
+    { media: "(prefers-color-scheme: dark)", color: "#1c1916" },
+  ],
+}
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={`${poppins.variable} ${playfair.variable} font-sans antialiased`}>
-        <SidebarProvider>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           {children}
-          <Toaster />
-        </SidebarProvider>
+          <Toaster richColors closeButton position="top-center" />
+        </ThemeProvider>
       </body>
     </html>
   )
