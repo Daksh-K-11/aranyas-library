@@ -1,9 +1,10 @@
 import requests
 
 BASE_URL = "http://localhost:8000/books"
+# BASE_URL = "http://localhost:8000/isbn?isbn="
 
 # 🔐 PASTE YOUR TOKEN HERE
-BEARER_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjk1Mjc3MWIyY2NlOTQyMWQwYWJlZDFjIiwiZXhwIjoxNzY3MDk4NTM2fQ.683R0psSycr4Uvn2gdCOkX0v4dzpx-UvymkEJlqpjCg"
+BEARER_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjk1Mjc3MWIyY2NlOTQyMWQwYWJlZDFjIiwiZXhwIjoxNzcyOTYwODU2fQ.Xg8xX7YV-zl5u4Y9MKFCJku7VPYt-8ZaWuBdiB4U-aA"
 
 HEADERS = {
     "Authorization": f"Bearer {BEARER_TOKEN}",
@@ -13,109 +14,110 @@ HEADERS = {
 # First 10 books with ISBN-13 and custom payloads
 books = [
     {
-        "isbn": "9780552554107",
+        "isbn": "9780451524935",
         "payload": {
-            "genres": ["fantasy"],
-            "tags": ["dragon", "magic"],
-            "personal_notes": "Gifted copy",
+            "genres": ["dystopian", "science fiction"],
+            "tags": ["surveillance", "propaganda"],
+            "personal_notes": "Chilling vision of authoritarian control",
+            "rating": 5,
+            "read_status": "completed"
+        }
+    },
+    {
+        "isbn": "9780441172719",
+        "payload": {
+            "genres": ["science fiction"],
+            "tags": ["desert", "prophecy"],
+            "personal_notes": "Massive scope and deep lore",
+            "rating": 5,
+            "read_status": "completed"
+        }
+    },
+    {
+        "isbn": "9780307387899",
+        "payload": {
+            "genres": ["science fiction", "literary fiction"],
+            "tags": ["memory", "time travel"],
+            "personal_notes": "Beautifully written time-travel story",
+            "rating": 5,
+            "read_status": "completed"
+        }
+    },
+    {
+        "isbn": "9780385490818",
+        "payload": {
+            "genres": ["science fiction"],
+            "tags": ["virtual reality", "cyberspace"],
+            "personal_notes": "Cyberpunk classic",
             "rating": 4,
             "read_status": "completed"
         }
     },
     {
-        "isbn": "9780439023528",
+        "isbn": "9780140283334",
         "payload": {
-            "genres": ["young adult", "fantasy"],
-            "tags": ["dystopian", "survival"],
-            "personal_notes": "Re-read during lockdown",
+            "genres": ["classic", "philosophical"],
+            "tags": ["plague", "existence"],
+            "personal_notes": "Existential themes during crisis",
             "rating": 5,
+            "read_status": "completed"
+        }
+    },
+    {
+        "isbn": "9780553293357",
+        "payload": {
+            "genres": ["science fiction"],
+            "tags": ["robots", "ethics"],
+            "personal_notes": "Fascinating ideas about robotics",
+            "rating": 4,
+            "read_status": "completed"
+        }
+    },
+    {
+        "isbn": "9781400033416",
+        "payload": {
+            "genres": ["literary fiction"],
+            "tags": ["identity", "immigration"],
+            "personal_notes": "Subtle and reflective",
+            "rating": 4,
+            "read_status": "completed"
+        }
+    },
+    {
+        "isbn": "9780812550702",
+        "payload": {
+            "genres": ["science fiction"],
+            "tags": ["military", "aliens"],
+            "personal_notes": "Thoughtful take on war and strategy",
+            "rating": 4,
+            "read_status": "completed"
+        }
+    },
+    {
+        "isbn": "9780141182803",
+        "payload": {
+            "genres": ["classic", "philosophical"],
+            "tags": ["absurdism", "freedom"],
+            "personal_notes": "Short but powerful existential work",
+            "rating": 4,
             "read_status": "completed"
         }
     },
     {
         "isbn": "9780061120084",
         "payload": {
-            "genres": ["classic", "allegory"],
-            "tags": ["philosophy", "journey"],
-            "personal_notes": "Recommended by a friend",
-            "rating": 4,
-            "read_status": "completed"
-        }
-    },
-    {
-        "isbn": "9780140449136",
-        "payload": {
-            "genres": ["classic", "epic"],
-            "tags": ["war", "honor"],
-            "personal_notes": "College reading",
-            "rating": 3,
-            "read_status": "completed"
-        }
-    },
-    {
-        "isbn": "9780307277671",
-        "payload": {
-            "genres": ["literary fiction"],
-            "tags": ["history", "family"],
-            "personal_notes": "Slow but rewarding",
-            "rating": 4,
-            "read_status": "completed"
-        }
-    },
-    {
-        "isbn": "9780743273565",
-        "payload": {
-            "genres": ["classic"],
-            "tags": ["american dream", "tragedy"],
-            "personal_notes": "High school favorite",
+            "genres": ["classic", "literary fiction"],
+            "tags": ["justice", "racism"],
+            "personal_notes": "Timeless moral story",
             "rating": 5,
             "read_status": "completed"
         }
-    },
-    {
-        "isbn": "9780385472579",
-        "payload": {
-            "genres": ["fantasy"],
-            "tags": ["mythology", "adventure"],
-            "personal_notes": "Beautiful world building",
-            "rating": 4,
-            "read_status": "completed"
-        }
-    },
-    {
-        "isbn": "9780316769488",
-        "payload": {
-            "genres": ["classic"],
-            "tags": ["coming-of-age", "identity"],
-            "personal_notes": "Not my favorite",
-            "rating": 3,
-            "read_status": "completed"
-        }
-    },
-    {
-        "isbn": "9780141439518",
-        "payload": {
-            "genres": ["romance", "classic"],
-            "tags": ["society", "relationships"],
-            "personal_notes": "Surprisingly engaging",
-            "rating": 4,
-            "read_status": "completed"
-        }
-    },
-    {
-        "isbn": "9781451673319",
-        "payload": {
-            "genres": ["science fiction"],
-            "tags": ["time travel", "philosophy"],
-            "personal_notes": "Mind-bending",
-            "rating": 5,
-            "read_status": "completed"
-        }
-    },
+    }
 ]
 
 for book in books:
     url = f"{BASE_URL}/{book['isbn']}"
+    # url = f"{BASE_URL}{book['isbn']}"
 
     try:
         response = requests.post(
