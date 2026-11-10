@@ -19,7 +19,6 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { useDebounce } from "@/hooks/use-debounce"
 import { api, errorMessage } from "@/lib/api"
 import { getToken } from "@/lib/auth"
-import { PREDEFINED_GENRES, mergeSuggestions } from "@/lib/constants"
 import type { Library, ReadStatus, UserBook } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -178,10 +177,9 @@ function DashboardContent() {
   const filterCount = (genre ? 1 : 0) + (status ? 1 : 0) + (minRating ? 1 : 0)
   const hasQuery = !!(q || filterCount)
 
-  const filterGenres = React.useMemo(
-    () => mergeSuggestions(PREDEFINED_GENRES, facets.genres),
-    [facets.genres],
-  )
+  // Only genres the user actually has; a predefined genre with no books
+  // would always filter to an empty list.
+  const filterGenres = facets.genres
 
   const clearFilters = () => {
     setSearch("")

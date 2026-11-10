@@ -1,60 +1,47 @@
 /**
- * Standard predefined options for genres, categories, and tags.
- * Users can pick from these presets or create their own custom ones on any screen.
+ * Predefined genres and tags. People can pick these or type their own.
+ * Genres also cover what used to be "categories". Keep PREDEFINED_GENRES in
+ * sync with PRESET_GENRES in backend/app/services/genres.py.
  */
 
+// Most common first: the form shows the first few as quick picks.
 export const PREDEFINED_GENRES = [
-  "Action & Adventure",
-  "Art & Photography",
-  "Biography & Memoir",
-  "Business & Economics",
-  "Children's Fiction",
-  "Classics",
-  "Contemporary Fiction",
-  "Cookbooks & Food",
-  "Crime & Mystery",
-  "Dystopian",
-  "Essays & Journalism",
   "Fantasy",
-  "Graphic Novels & Manga",
-  "Health & Wellness",
-  "Historical Fiction",
-  "History",
-  "Horror",
-  "Humor & Satire",
-  "Literary Fiction",
-  "Music & Performing Arts",
-  "Philosophy",
-  "Poetry",
-  "Politics & Social Sciences",
-  "Psychology",
-  "Religion & Spirituality",
-  "Romance",
-  "Science & Technology",
   "Science Fiction",
-  "Self-Help",
-  "Short Stories",
+  "Crime & Mystery",
   "Thriller & Suspense",
-  "Travel & Adventure",
-  "True Crime",
+  "Romance",
+  "Literary Fiction",
+  "Historical Fiction",
+  "Biography & Memoir",
+  "Self-Help",
+  "History",
   "Young Adult",
-] as const
-
-export const PREDEFINED_CATEGORIES = [
+  "Classics",
+  "Horror",
+  "Business & Economics",
+  "Science & Technology",
+  "Philosophy",
+  "Psychology",
+  "Contemporary Fiction",
+  "Action & Adventure",
+  "Children's Fiction",
+  "Dystopian",
+  "Graphic Novels & Manga",
+  "Poetry",
+  "Religion & Spirituality",
+  "Health & Wellness",
+  "Politics & Social Sciences",
+  "True Crime",
+  "Humor & Satire",
+  "Short Stories",
+  "Essays & Journalism",
+  "Travel & Adventure",
+  "Cookbooks & Food",
+  "Art & Photography",
+  "Music & Performing Arts",
   "Fiction",
   "Non-Fiction",
-  "Literature",
-  "Science",
-  "Technology",
-  "History",
-  "Philosophy",
-  "Social Sciences",
-  "Arts & Humanities",
-  "Business & Finance",
-  "Health & Medicine",
-  "Education & Reference",
-  "Comics & Graphic Novels",
-  "Children & Teens",
 ] as const
 
 export const PREDEFINED_TAGS = [
@@ -77,32 +64,24 @@ export const PREDEFINED_TAGS = [
 ] as const
 
 /**
- * Merge a predefined list with user custom entries, deduplicating case-insensitively.
+ * Merge suggestion lists in priority order, dropping case-insensitive
+ * duplicates. Order is kept (not sorted) so the most relevant options are
+ * the ones shown first; the first spelling seen wins, so pass the user's own
+ * entries before the predefined ones.
  */
-export function mergeSuggestions(
-  predefined: readonly string[],
-  userItems: string[] = []
-): string[] {
-  const map = new Map<string, string>()
-
-  // Add user items first so their exact casing takes precedence
-  for (const item of userItems) {
-    if (item && item.trim()) {
-      map.set(item.trim().toLowerCase(), item.trim())
+export function mergeSuggestions(...lists: ReadonlyArray<readonly string[] | undefined>): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const list of lists) {
+    for (const raw of list ?? []) {
+      const item = raw?.trim()
+      if (!item) continue
+      const key = item.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(item)
     }
   }
-
-  // Add predefined items if not already present
-  for (const item of predefined) {
-    if (item && item.trim()) {
-      const key = item.trim().toLowerCase()
-      if (!map.has(key)) {
-        map.set(key, item.trim())
-      }
-    }
-  }
-
-  return Array.from(map.values()).sort((a, b) =>
-    a.localeCompare(b, undefined, { sensitivity: "base" })
-  )
+  return out
 }
+

@@ -1,27 +1,38 @@
 "use client"
 
 import * as React from "react"
-import { Plus, X } from "lucide-react"
+import { Plus, Sparkles, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface TagInputProps {
   value: string[]
   onChange: (value: string[]) => void
   placeholder?: string
-  suggestions?: string[]
+  /** Options offered as one-tap pills, most relevant first. */
+  suggestions?: readonly string[]
+  /** Options picked for this book (e.g. from its catalogue subjects). Shown first, highlighted. */
+  featured?: readonly string[]
   max?: number
   maxLength?: number
   prefix?: string
   id?: string
   className?: string
+  /** Set false for free-text lists such as authors. */
   showQuickSuggestions?: boolean
 }
+
+// Pills shown before "Show all". Fewer on phones so the form stays short.
+const PREVIEW_MOBILE = 6
+const PREVIEW_DESKTOP = 10
+
+const lower = (s: string) => s.toLowerCase()
 
 export function TagInput({
   value,
   onChange,
   placeholder = "Type and press Enter",
   suggestions = [],
+  featured = [],
   max = 30,
   maxLength = 40,
   prefix = "",
@@ -31,71 +42,79 @@ export function TagInput({
 }: TagInputProps) {
   const [draft, setDraft] = React.useState("")
   const [showAll, setShowAll] = React.useState(false)
-  const listId = React.useId()
+  const inputRef = React.useRef<HTMLInputElement>(null)
+
+  const full = value.length >= max
+  const chosen = React.useMemo(() => new Set(value.map(lower)), [value])
+
+  // Every option once, featured first, in a lookup so typed text can be
+  // matched to its canonical spelling ("fantasy" -> "Fantasy").
+  const options = React.useMemo(() => {
+    const seen = new Set<string>()
+    const out: { label: string; featured: boolean }[] = []
+    for (const [list, isFeatured] of [[featured, true], [suggestions, false]] as const) {
+      for (const s of list) {
+        const k = lower(s)
+        if (!s || seen.has(k)) continue
+        seen.add(k)
+        out.push({ label: s, featured: isFeatured })
+      }
+    }
+    return out
+  }, [featured, suggestions])
+
+  const canonical = (s: string) => options.find((o) => lower(o.label) === lower(s))?.label ?? s
+
+  const stripPrefix = (s: string) => {
+    const t = s.trim()
+    return prefix && t.startsWith(prefix) ? t.slice(prefix.length).trim() : t
+  }
 
   const add = (raw: string) => {
-    let clean = raw.trim()
-    if (prefix && clean.startsWith(prefix)) {
-      clean = clean.slice(prefix.length).trim()
-    }
-    const parts = clean
+    const parts = stripPrefix(raw)
       .split(",")
-      .map((s) => s.trim().slice(0, maxLength))
+      .map((s) => canonical(stripPrefix(s).slice(0, maxLength)))
       .filter(Boolean)
+    setDraft("")
     if (!parts.length) return
     const next = [...value]
     for (const p of parts) {
       if (next.length >= max) break
-      if (!next.some((v) => v.toLowerCase() === p.toLowerCase())) next.push(p)
+      if (!next.some((v) => lower(v) === lower(p))) next.push(p)
     }
-    onChange(next)
-    setDraft("")
+    if (next.length !== value.length) onChange(next)
   }
 
-  const cleanDraft = draft.trim().replace(new RegExp(`^${prefix}`), "").toLowerCase()
+  const query = lower(stripPrefix(draft))
+  const available = options.filter((o) => !chosen.has(lower(o.label)))
+  const matching = query ? available.filter((o) => lower(o.label).includes(query)) : available
+  const exactMatch = !!query && (chosen.has(query) || options.some((o) => lower(o.label) === query))
+  const showCustom = !!query && !exactMatch
 
-  // Suggestions not already chosen
-  const unselectedSuggestions = React.useMemo(() => {
-    return suggestions.filter(
-      (s) => !value.some((v) => v.toLowerCase() === s.toLowerCase())
-    )
-  }, [suggestions, value])
+  const collapsed = !showAll && !query
+  const moreMobile = collapsed ? matching.length - PREVIEW_MOBILE : 0
+  const moreDesktop = collapsed ? matching.length - PREVIEW_DESKTOP : 0
 
-  // Filtered by current typing
-  const filteredSuggestions = React.useMemo(() => {
-    if (!cleanDraft) return unselectedSuggestions
-    return unselectedSuggestions.filter((s) =>
-      s.toLowerCase().includes(cleanDraft)
-    )
-  }, [unselectedSuggestions, cleanDraft])
+  // Tapping a pill must not blur the input first: blur commits the draft,
+  // which would add the half-typed text as well as the pill.
+  const keepFocus = (e: React.MouseEvent) => e.preventDefault()
 
-  // Is draft a completely new custom tag not matching any existing selection or suggestions?
-  const isCustomDraft =
-    cleanDraft.length > 0 &&
-    !value.some((v) => v.toLowerCase() === cleanDraft) &&
-    !suggestions.some((s) => s.toLowerCase() === cleanDraft)
-
-  // How many suggestions to preview by default
-  const previewLimit = 8
-  const displayedSuggestions =
-    showAll || cleanDraft
-      ? filteredSuggestions
-      : filteredSuggestions.slice(0, previewLimit)
-  const hasMore =
-    !showAll && !cleanDraft && filteredSuggestions.length > previewLimit
+  const pillBase =
+    "inline-flex h-8 max-w-full items-center gap-1 rounded-full border px-3 text-xs transition-colors sm:h-7 sm:px-2.5"
 
   return (
-    <div className="space-y-2">
+    <div className="grid gap-2">
       <div
+        onClick={() => inputRef.current?.focus()}
         className={cn(
-          "flex min-h-10 w-full flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2.5 py-1.5 text-sm shadow-xs transition-shadow focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30",
+          "flex min-h-10 w-full cursor-text flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 text-sm shadow-xs transition-shadow focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30",
           className,
         )}
       >
         {value.map((tag) => (
           <span
             key={tag}
-            className="inline-flex max-w-full items-center gap-1 rounded-full bg-secondary py-0.5 pl-2.5 pr-1 text-xs font-medium text-secondary-foreground"
+            className="inline-flex h-7 max-w-full items-center gap-1 rounded-full bg-secondary pl-2.5 pr-1 text-xs font-medium text-secondary-foreground sm:h-6"
           >
             <span className="truncate">
               {prefix}
@@ -103,8 +122,11 @@ export function TagInput({
             </span>
             <button
               type="button"
-              onClick={() => onChange(value.filter((t) => t !== tag))}
-              className="inline-flex size-4 items-center justify-center rounded-full hover:bg-foreground/15 text-muted-foreground hover:text-foreground transition-colors"
+              onClick={(e) => {
+                e.stopPropagation()
+                onChange(value.filter((t) => t !== tag))
+              }}
+              className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/15 hover:text-foreground"
               aria-label={`Remove ${tag}`}
             >
               <X className="size-3" />
@@ -112,9 +134,9 @@ export function TagInput({
           </span>
         ))}
         <input
+          ref={inputRef}
           id={id}
           value={draft}
-          list={unselectedSuggestions.length ? listId : undefined}
           maxLength={maxLength * 3}
           onChange={(e) => {
             const v = e.target.value
@@ -124,79 +146,87 @@ export function TagInput({
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault()
-              if (draft.trim()) add(draft)
+              // Enter on a partial match picks the single remaining option.
+              if (!exactMatch && matching.length === 1) add(matching[0].label)
+              else if (draft.trim()) add(draft)
+            } else if (e.key === "Escape" && draft) {
+              e.stopPropagation()
+              setDraft("")
             } else if (e.key === "Backspace" && !draft && value.length) {
               onChange(value.slice(0, -1))
             }
           }}
-          onBlur={() => {
-            if (draft.trim()) add(draft)
-          }}
-          placeholder={value.length >= max ? "" : placeholder}
-          disabled={value.length >= max}
+          onBlur={() => draft.trim() && add(draft)}
+          placeholder={full ? `Limit of ${max} reached` : value.length ? "Add more…" : placeholder}
+          disabled={full}
+          autoComplete="off"
+          autoCapitalize="off"
           enterKeyHint="done"
-          className="min-w-[7rem] flex-1 bg-transparent px-1 py-0.5 outline-none placeholder:text-muted-foreground text-sm"
+          className="h-7 min-w-[6rem] flex-1 bg-transparent px-1 text-base outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed sm:text-sm"
         />
-        {unselectedSuggestions.length ? (
-          <datalist id={listId}>
-            {unselectedSuggestions.slice(0, 50).map((s) => (
-              <option key={s} value={s} />
-            ))}
-          </datalist>
-        ) : null}
       </div>
 
-      {/* Quick Add Pills / Suggestions */}
-      {showQuickSuggestions && (filteredSuggestions.length > 0 || isCustomDraft) && (
-        <div className="flex flex-col gap-1.5 pt-0.5">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {/* If user typed custom tag, offer an instant 1-tap add pill */}
-            {isCustomDraft && (
-              <button
-                type="button"
-                onClick={() => add(draft)}
-                className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
-              >
-                <Plus className="size-3" />
-                Add custom &ldquo;{prefix}{draft.trim()}&rdquo;
-              </button>
-            )}
+      {showQuickSuggestions && !full && (matching.length > 0 || showCustom) ? (
+        <div className="flex flex-wrap items-center gap-1.5" aria-label="Suggestions">
+          {showCustom ? (
+            <button
+              type="button"
+              onMouseDown={keepFocus}
+              onClick={() => add(draft)}
+              className={cn(pillBase, "border-primary/40 bg-primary/10 font-medium text-primary hover:bg-primary/20")}
+            >
+              <Plus className="size-3 shrink-0" />
+              <span className="truncate">
+                Add &ldquo;{prefix}
+                {stripPrefix(draft)}&rdquo;
+              </span>
+            </button>
+          ) : null}
 
-            {/* Clickable predefined / suggested tags */}
-            {displayedSuggestions.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => add(s)}
-                className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-muted/40 px-2.5 py-0.5 text-xs text-muted-foreground hover:border-primary/50 hover:bg-primary/5 hover:text-foreground transition-colors"
-              >
-                <Plus className="size-3 text-muted-foreground/60" />
-                {prefix}{s}
-              </button>
-            ))}
+          {matching.map((o, i) => (
+            <button
+              key={o.label}
+              type="button"
+              onMouseDown={keepFocus}
+              onClick={() => add(o.label)}
+              title={o.featured ? "Suggested from this book's details" : undefined}
+              className={cn(
+                pillBase,
+                o.featured
+                  ? "border-primary/40 bg-primary/5 text-foreground hover:bg-primary/15"
+                  : "border-border bg-muted/40 text-muted-foreground hover:border-primary/50 hover:bg-primary/5 hover:text-foreground",
+                collapsed && i >= PREVIEW_MOBILE && "max-sm:hidden",
+                collapsed && i >= PREVIEW_DESKTOP && "sm:hidden",
+              )}
+            >
+              {o.featured ? <Sparkles className="size-3 shrink-0 text-primary" /> : <Plus className="size-3 shrink-0 opacity-60" />}
+              <span className="truncate">
+                {prefix}
+                {o.label}
+              </span>
+            </button>
+          ))}
 
-            {hasMore && (
-              <button
-                type="button"
-                onClick={() => setShowAll(true)}
-                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs text-muted-foreground/70 hover:text-primary transition-colors underline-offset-2 hover:underline"
-              >
-                +{filteredSuggestions.length - previewLimit} more
-              </button>
-            )}
-
-            {showAll && filteredSuggestions.length > previewLimit && (
-              <button
-                type="button"
-                onClick={() => setShowAll(false)}
-                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs text-muted-foreground/70 hover:text-primary transition-colors underline-offset-2 hover:underline"
-              >
-                Show fewer
-              </button>
-            )}
-          </div>
+          {moreMobile > 0 ? (
+            <button type="button" onMouseDown={keepFocus} onClick={() => setShowAll(true)} className={cn(moreClass, "sm:hidden")}>
+              +{moreMobile} more
+            </button>
+          ) : null}
+          {moreDesktop > 0 ? (
+            <button type="button" onMouseDown={keepFocus} onClick={() => setShowAll(true)} className={cn(moreClass, "max-sm:hidden")}>
+              +{moreDesktop} more
+            </button>
+          ) : null}
+          {showAll && !query && matching.length > PREVIEW_MOBILE ? (
+            <button type="button" onMouseDown={keepFocus} onClick={() => setShowAll(false)} className={moreClass}>
+              Show fewer
+            </button>
+          ) : null}
         </div>
-      )}
+      ) : null}
     </div>
   )
 }
+
+const moreClass =
+  "inline-flex h-8 items-center px-2 text-xs font-medium text-muted-foreground underline-offset-2 transition-colors hover:text-primary hover:underline sm:h-7"

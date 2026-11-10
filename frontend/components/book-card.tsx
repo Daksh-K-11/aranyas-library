@@ -38,7 +38,7 @@ export function BookCard({ data, onOpen }: BookCardProps) {
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <StatusBadge status={data.read_status} />
-          {data.rating ? <StarRating value={data.rating} size="sm" /> : null}
+          {data.rating ? <StarRating value={data.rating} size="sm" showValue /> : null}
         </div>
         <div className="mt-auto flex flex-wrap items-center gap-1 pt-2">
           {data.genres.slice(0, 2).map((g) => (

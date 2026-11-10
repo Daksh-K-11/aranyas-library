@@ -9,7 +9,6 @@ import { CoverPicker, type CoverValue } from "@/components/add-book/cover-picker
 import { OcrButton } from "@/components/add-book/ocr-button"
 import { guessTitle } from "@/lib/ocr"
 import { cleanIsbn, isbnProblem } from "@/lib/isbn"
-import { PREDEFINED_CATEGORIES } from "@/lib/constants"
 
 export interface BookMeta {
   title: string
@@ -19,7 +18,6 @@ export interface BookMeta {
   publisher: string
   published_year: string
   description: string
-  categories: string[]
 }
 
 export const EMPTY_META: BookMeta = {
@@ -30,7 +28,6 @@ export const EMPTY_META: BookMeta = {
   publisher: "",
   published_year: "",
   description: "",
-  categories: [],
 }
 
 export function metaProblem(m: BookMeta, withIsbn: boolean): string | null {
@@ -145,19 +142,6 @@ export function BookMetaForm({
       ) : null}
 
       <div className="grid gap-2">
-        <Label htmlFor="bm-categories">Categories</Label>
-        <TagInput
-          id="bm-categories"
-          value={value.categories}
-          onChange={(v) => set("categories", v)}
-          suggestions={PREDEFINED_CATEGORIES as unknown as string[]}
-          max={15}
-          maxLength={60}
-          placeholder="Fiction, Science, History…"
-        />
-      </div>
-
-      <div className="grid gap-2">
         <div className="flex items-end justify-between gap-2">
           <Label htmlFor="bm-desc">Description</Label>
           <OcrButton
@@ -188,6 +172,5 @@ export function metaToPayload(m: BookMeta) {
     publisher: m.publisher.trim() || null,
     published_year: year,
     description: m.description.trim() || null,
-    categories: m.categories,
   }
 }

@@ -42,7 +42,6 @@ function toMeta(b: UserBook["book"]): BookMeta {
     publisher: b.publisher ?? "",
     published_year: b.published_year ? String(b.published_year) : "",
     description: b.description ?? "",
-    categories: b.categories ?? [],
   }
 }
 
@@ -117,7 +116,6 @@ export function BookDetailView({ book, onClose, libraryId, libraries, facets, on
         publisher: meta.publisher.trim() || null,
         published_year: year,
         description: meta.description.trim() || null,
-        categories: meta.categories,
       }
       const prev = {
         title: original.title,
@@ -126,7 +124,6 @@ export function BookDetailView({ book, onClose, libraryId, libraries, facets, on
         publisher: original.publisher || null,
         published_year: original.published_year ? Number(original.published_year) : null,
         description: original.description || null,
-        categories: original.categories,
       }
       for (const k of Object.keys(next) as (keyof typeof next)[]) {
         if (!same(next[k], prev[k])) overrides[k] = next[k]
@@ -253,7 +250,13 @@ export function BookDetailView({ book, onClose, libraryId, libraries, facets, on
           <div className="grid gap-8">
             <section className="grid gap-5">
               <h4 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Your copy</h4>
-              <UserFieldsForm value={fields} onChange={setFields} genreSuggestions={facets.genres} tagSuggestions={facets.tags} />
+              <UserFieldsForm
+                value={fields}
+                onChange={setFields}
+                genreSuggestions={facets.genres}
+                tagSuggestions={facets.tags}
+                featured={{ genres: b.suggested_genres ?? [], tags: b.suggested_tags ?? [] }}
+              />
             </section>
             <section className="grid gap-5 border-t pt-6">
               <div>
@@ -276,7 +279,7 @@ export function BookDetailView({ book, onClose, libraryId, libraries, facets, on
                   {b.subtitle ? <p className="text-muted-foreground">{b.subtitle}</p> : null}
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <StatusBadge status={book.read_status} />
-                    {book.rating ? <StarRating value={book.rating} size="md" /> : (
+                    {book.rating ? <StarRating value={book.rating} size="md" showValue /> : (
                       <span className="text-xs text-muted-foreground">Not rated</span>
                     )}
                     {b.is_private ? (
@@ -325,19 +328,6 @@ export function BookDetailView({ book, onClose, libraryId, libraries, facets, on
               <section className="rounded-xl border bg-muted/40 p-4">
                 <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Your notes</h4>
                 <p className="whitespace-pre-line text-sm italic leading-relaxed">{book.personal_notes}</p>
-              </section>
-            ) : null}
-
-            {b.categories.length ? (
-              <section>
-                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Categories</h4>
-                <div className="flex flex-wrap gap-1.5">
-                  {b.categories.map((c) => (
-                    <span key={c} className="rounded-md border px-2 py-0.5 text-xs text-muted-foreground">
-                      {c}
-                    </span>
-                  ))}
-                </div>
               </section>
             ) : null}
 

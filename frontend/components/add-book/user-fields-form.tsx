@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { Sparkles } from "lucide-react"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { StarRating } from "@/components/star-rating"
@@ -15,20 +16,27 @@ export function UserFieldsForm({
   onChange,
   genreSuggestions = [],
   tagSuggestions = [],
+  featured,
+  autoFilledFrom,
 }: {
   value: UserFields
   onChange: (v: UserFields) => void
+  /** Genres/tags the user already uses. Offered before the predefined ones. */
   genreSuggestions?: string[]
   tagSuggestions?: string[]
+  /** Suggestions derived from this particular book's catalogue subjects. */
+  featured?: { genres: string[]; tags: string[] }
+  /** Name of the catalogue the genres were pre-filled from, for the hint. */
+  autoFilledFrom?: string | null
 }) {
   const set = <K extends keyof UserFields>(k: K, v: UserFields[K]) => onChange({ ...value, [k]: v })
 
   const mergedGenres = React.useMemo(
-    () => mergeSuggestions(PREDEFINED_GENRES, genreSuggestions),
+    () => mergeSuggestions(genreSuggestions, PREDEFINED_GENRES),
     [genreSuggestions],
   )
   const mergedTags = React.useMemo(
-    () => mergeSuggestions(PREDEFINED_TAGS, tagSuggestions),
+    () => mergeSuggestions(tagSuggestions, PREDEFINED_TAGS),
     [tagSuggestions],
   )
 
@@ -42,28 +50,36 @@ export function UserFieldsForm({
         <Label>Your rating</Label>
         <StarRating value={value.rating} onChange={(v) => set("rating", v)} size="lg" />
       </div>
-      <div className="grid gap-5 sm:grid-cols-2">
-        <div className="grid gap-2">
+      {/* Full width rather than two columns: the suggestion pills need room. */}
+      <div className="grid gap-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
           <Label htmlFor="uf-genres">Genres</Label>
-          <TagInput
-            id="uf-genres"
-            value={value.genres}
-            onChange={(v) => set("genres", v)}
-            suggestions={mergedGenres}
-            placeholder="Fantasy, Thriller…"
-          />
+          {autoFilledFrom && value.genres.length ? (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Sparkles className="size-3 text-primary" /> Filled in from {autoFilledFrom}
+            </span>
+          ) : null}
         </div>
-        <div className="grid gap-2">
-          <Label htmlFor="uf-tags">Tags</Label>
-          <TagInput
-            id="uf-tags"
-            value={value.tags}
-            onChange={(v) => set("tags", v)}
-            suggestions={mergedTags}
-            prefix="#"
-            placeholder="signed, gift…"
-          />
-        </div>
+        <TagInput
+          id="uf-genres"
+          value={value.genres}
+          onChange={(v) => set("genres", v)}
+          suggestions={mergedGenres}
+          featured={featured?.genres}
+          placeholder="Pick below or type your own"
+        />
+      </div>
+      <div className="grid gap-2">
+        <Label htmlFor="uf-tags">Tags</Label>
+        <TagInput
+          id="uf-tags"
+          value={value.tags}
+          onChange={(v) => set("tags", v)}
+          suggestions={mergedTags}
+          featured={featured?.tags}
+          prefix="#"
+          placeholder="signed, gift, to-lend…"
+        />
       </div>
       <div className="grid gap-2">
         <Label htmlFor="uf-notes">Personal notes</Label>

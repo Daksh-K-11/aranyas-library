@@ -30,6 +30,9 @@ import { EMPTY_USER_FIELDS, type Book, type Library, type SearchCandidate, type 
 
 type Step = "find" | "notfound" | "review" | "manual"
 
+const sameList = (a: string[], b: string[]) =>
+  a.length === b.length && a.every((v, i) => v.toLowerCase() === b[i]?.toLowerCase())
+
 const SOURCE_LABEL: Record<string, string> = {
   google_books: "Google Books",
   open_library: "Open Library",
@@ -66,6 +69,8 @@ export function AddBookModal({ open, onOpenChange, libraries, activeLibraryId, f
   const [libraryIds, setLibraryIds] = React.useState<string[]>([])
   const [saving, setSaving] = React.useState(false)
   const [formError, setFormError] = React.useState<string | null>(null)
+  // Genres we pre-filled from catalogue subjects, and which catalogue they came from.
+  const [auto, setAuto] = React.useState<{ genres: string[]; from: string } | null>(null)
 
   const reset = React.useCallback(() => {
     setStep("find")
@@ -79,6 +84,8 @@ export function AddBookModal({ open, onOpenChange, libraries, activeLibraryId, f
     setMeta(EMPTY_META)
     setCover(EMPTY_COVER)
     setFields(EMPTY_USER_FIELDS)
+    setAuto(null)
+    setSuggested(undefined)
     setFormError(null)
     setLibraryIds(activeLibraryId ? [activeLibraryId] : [])
   }, [activeLibraryId])
@@ -86,6 +93,31 @@ export function AddBookModal({ open, onOpenChange, libraries, activeLibraryId, f
   React.useEffect(() => {
     if (open) reset()
   }, [open, reset])
+
+  // ------------------------------------------------------------ auto-fill
+  // Pre-fill genres from the book's catalogue subjects. Genres the user has
+  // edited are left alone; only our own earlier guess gets replaced.
+  const applySuggested = (suggested: string[] | undefined, from: string) => {
+    // Keep the user's spelling when they already use one of these genres.
+    const own = new Map(facets.genres.map((g) => [g.toLowerCase(), g]))
+    const genres = (suggested ?? []).map((g) => own.get(g.toLowerCase()) ?? g)
+    const previous = auto?.genres ?? []
+    setFields((f) => (f.genres.length === 0 || sameList(f.genres, previous) ? { ...f, genres } : f))
+    setAuto(genres.length ? { genres, from } : null)
+  }
+
+  const sourceName = (b: Book) =>
+    b.source === "user_submitted" ? "the catalogue" : (SOURCE_LABEL[b.sources?.[0] ?? ""] ?? "the catalogue")
+
+  // Suggestions for this book, worked out by the server from its catalogue subjects.
+  const [suggested, setSuggested] = React.useState<{ genres: string[]; tags: string[] } | undefined>()
+  const featured = step === "review" || step === "manual" ? suggested : undefined
+  const autoFrom = auto && sameList(fields.genres, auto.genres) ? auto.from : null
+
+  const takeSuggestions = (s: { suggested_genres?: string[]; suggested_tags?: string[] }, from: string) => {
+    setSuggested({ genres: s.suggested_genres ?? [], tags: s.suggested_tags ?? [] })
+    applySuggested(s.suggested_genres, from)
+  }
 
   // ------------------------------------------------------------ lookup
   const lookup = async (raw: string) => {
@@ -101,6 +133,7 @@ export function AddBookModal({ open, onOpenChange, libraries, activeLibraryId, f
     try {
       const book = await api.lookupIsbn(clean)
       setFound(book)
+      takeSuggestions(book, sourceName(book))
       setStep("review")
     } catch (e) {
       if (e instanceof ApiError && e.status === 404 && e.data?.manual_allowed) {
@@ -135,6 +168,7 @@ export function AddBookModal({ open, onOpenChange, libraries, activeLibraryId, f
       try {
         const book = await api.lookupIsbn(c.isbn_13)
         setFound(book)
+        takeSuggestions(book, sourceName(book))
         setStep("review")
         return
       } catch (e) {
@@ -154,8 +188,8 @@ export function AddBookModal({ open, onOpenChange, libraries, activeLibraryId, f
       publisher: c.publisher ?? "",
       published_year: c.published_year ? String(c.published_year) : "",
       description: c.description ?? "",
-      categories: c.categories,
     }, c.cover_url ?? null)
+    takeSuggestions(c, SOURCE_LABEL[c.source] ?? "the catalogue")
   }
 
   const startManual = (prefill?: Partial<BookMeta>, coverUrl: string | null = null) => {
@@ -433,7 +467,14 @@ export function AddBookModal({ open, onOpenChange, libraries, activeLibraryId, f
 
           <LibraryPicker libraries={libraries} value={libraryIds} onChange={setLibraryIds} />
           {!found.user_book_id ? (
-            <UserFieldsForm value={fields} onChange={setFields} genreSuggestions={facets.genres} tagSuggestions={facets.tags} />
+            <UserFieldsForm
+              value={fields}
+              onChange={setFields}
+              genreSuggestions={facets.genres}
+              tagSuggestions={facets.tags}
+              featured={featured}
+              autoFilledFrom={autoFrom}
+            />
           ) : null}
         </div>
       )}
@@ -444,7 +485,14 @@ export function AddBookModal({ open, onOpenChange, libraries, activeLibraryId, f
           <div className="grid gap-5 border-t pt-6">
             <h4 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Your copy</h4>
             <LibraryPicker libraries={libraries} value={libraryIds} onChange={setLibraryIds} />
-            <UserFieldsForm value={fields} onChange={setFields} genreSuggestions={facets.genres} tagSuggestions={facets.tags} />
+            <UserFieldsForm
+              value={fields}
+              onChange={setFields}
+              genreSuggestions={facets.genres}
+              tagSuggestions={facets.tags}
+              featured={featured}
+              autoFilledFrom={autoFrom}
+            />
           </div>
         </div>
       )}

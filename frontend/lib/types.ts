@@ -17,6 +17,9 @@ export interface Book {
   page_count?: number | null
   is_private?: boolean
   user_book_id?: string | null
+  /** Preset genres / tags the server suggests from the catalogue subjects. */
+  suggested_genres?: string[]
+  suggested_tags?: string[]
 }
 
 export type OverridableField =
@@ -97,6 +100,8 @@ export interface SearchCandidate {
   isbn_13?: string | null
   isbn_10?: string | null
   source: string
+  suggested_genres?: string[]
+  suggested_tags?: string[]
 }
 
 export interface UserFields {
