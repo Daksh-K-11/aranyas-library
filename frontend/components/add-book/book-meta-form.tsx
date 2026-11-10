@@ -9,6 +9,7 @@ import { CoverPicker, type CoverValue } from "@/components/add-book/cover-picker
 import { OcrButton } from "@/components/add-book/ocr-button"
 import { guessTitle } from "@/lib/ocr"
 import { cleanIsbn, isbnProblem } from "@/lib/isbn"
+import { PREDEFINED_CATEGORIES } from "@/lib/constants"
 
 export interface BookMeta {
   title: string
@@ -145,7 +146,15 @@ export function BookMetaForm({
 
       <div className="grid gap-2">
         <Label htmlFor="bm-categories">Categories</Label>
-        <TagInput id="bm-categories" value={value.categories} onChange={(v) => set("categories", v)} max={15} maxLength={60} />
+        <TagInput
+          id="bm-categories"
+          value={value.categories}
+          onChange={(v) => set("categories", v)}
+          suggestions={PREDEFINED_CATEGORIES as unknown as string[]}
+          max={15}
+          maxLength={60}
+          placeholder="Fiction, Science, History…"
+        />
       </div>
 
       <div className="grid gap-2">

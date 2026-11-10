@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useDebounce } from "@/hooks/use-debounce"
 import { ApiError, api, errorMessage } from "@/lib/api"
+import { PREDEFINED_GENRES } from "@/lib/constants"
 import type { PublicBook, PublicLibraryPage } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -148,7 +149,7 @@ function PublicLibraryInner({ slug }: { slug: string }) {
               </SelectTrigger>
               <SelectContent className="max-h-80 z-[100]">
                 <SelectItem value="all">All genres</SelectItem>
-                {lib?.genres?.map((g) => (
+                {((lib?.genres && lib.genres.length > 0) ? lib.genres : PREDEFINED_GENRES).map((g) => (
                   <SelectItem key={g} value={g}>
                     {g}
                   </SelectItem>

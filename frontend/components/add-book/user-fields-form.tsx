@@ -1,10 +1,12 @@
 "use client"
 
+import * as React from "react"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { StarRating } from "@/components/star-rating"
 import { StatusPicker } from "@/components/status"
 import { TagInput } from "@/components/tag-input"
+import { PREDEFINED_GENRES, PREDEFINED_TAGS, mergeSuggestions } from "@/lib/constants"
 import type { Library, UserFields } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -20,6 +22,16 @@ export function UserFieldsForm({
   tagSuggestions?: string[]
 }) {
   const set = <K extends keyof UserFields>(k: K, v: UserFields[K]) => onChange({ ...value, [k]: v })
+
+  const mergedGenres = React.useMemo(
+    () => mergeSuggestions(PREDEFINED_GENRES, genreSuggestions),
+    [genreSuggestions],
+  )
+  const mergedTags = React.useMemo(
+    () => mergeSuggestions(PREDEFINED_TAGS, tagSuggestions),
+    [tagSuggestions],
+  )
+
   return (
     <div className="grid gap-5">
       <div className="grid gap-2">
@@ -37,7 +49,7 @@ export function UserFieldsForm({
             id="uf-genres"
             value={value.genres}
             onChange={(v) => set("genres", v)}
-            suggestions={genreSuggestions}
+            suggestions={mergedGenres}
             placeholder="Fantasy, Thriller…"
           />
         </div>
@@ -47,7 +59,7 @@ export function UserFieldsForm({
             id="uf-tags"
             value={value.tags}
             onChange={(v) => set("tags", v)}
-            suggestions={tagSuggestions}
+            suggestions={mergedTags}
             prefix="#"
             placeholder="signed, gift…"
           />
