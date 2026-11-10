@@ -5,6 +5,7 @@ import { Loader2, ScanText } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
+import { FREE_ASPECT, ImageCropDialog } from "@/components/image-crop-dialog"
 
 /**
  * Pick or photograph an image, run free in-browser OCR (tesseract.js) and
@@ -22,6 +23,7 @@ export function OcrButton({
 }) {
   const inputRef = React.useRef<HTMLInputElement>(null)
   const [progress, setProgress] = React.useState<number | null>(null)
+  const [pending, setPending] = React.useState<Blob | null>(null)
 
   const run = async (image: Blob) => {
     setProgress(0)
@@ -44,7 +46,7 @@ export function OcrButton({
         variant="secondary"
         size="sm"
         disabled={progress !== null}
-        onClick={() => (source ? run(source) : inputRef.current?.click())}
+        onClick={() => (source ? setPending(source) : inputRef.current?.click())}
       >
         {progress !== null ? <Loader2 className="size-4 animate-spin" /> : <ScanText className="size-4" />}
         {progress !== null ? `Reading… ${progress}%` : label}
@@ -58,8 +60,21 @@ export function OcrButton({
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0]
-          if (f) run(f)
+          if (f) setPending(f)
           e.target.value = ""
+        }}
+      />
+      <ImageCropDialog
+        file={pending}
+        title="Select the text"
+        description="Crop to just the text you want read. Tighter crops give better results."
+        aspects={FREE_ASPECT}
+        maxOutput={3000}
+        confirmLabel="Read text"
+        onCancel={() => setPending(null)}
+        onConfirm={(blob) => {
+          setPending(null)
+          run(blob)
         }}
       />
     </div>

@@ -17,7 +17,6 @@ import httpx
 from PIL import Image
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.environ.setdefault("SECRET_KEY", "unused-by-smoke-test-but-required-by-config")
 
 BASE = next((a for a in sys.argv[1:] if a.startswith("http")), "http://localhost:8000")
 CLEANUP = "--cleanup" in sys.argv
@@ -39,10 +38,36 @@ async def user(c: httpx.AsyncClient, tag: str):
     email = f"smoke-{tag}-{secrets.token_hex(4)}@example.com"
     pw = "Sm0ke-test-pass"
     r = await c.post("/auth/register", json={"email": email, "password": pw, "name": tag})
-    check(f"register {tag}", r.status_code == 201, r.text)
+    check(f"register {tag}", r.status_code == 201 and r.json().get("verification_required"), r.text)
     r = await c.post("/auth/login", json={"email": email, "password": pw})
+    check(f"unverified login blocked {tag}", r.status_code == 403 and r.json().get("code") == "email_not_verified", r.text)
+    await plant_code(email, "verify", "123456")
+    r = await c.post("/auth/verify-email", json={"email": email, "code": "654321"})
+    check(f"wrong code rejected {tag}", r.status_code == 400)
+    r = await c.post("/auth/verify-email", json={"email": email, "code": "123456"})
+    check(f"verify email {tag}", r.status_code == 200 and r.json().get("access_token"), r.text)
+    r2 = await c.post("/auth/verify-email", json={"email": email, "code": "123456"})
+    check(f"code is single use {tag}", r2.status_code == 400)
     token = r.json()["access_token"]
     return email, {"Authorization": f"Bearer {token}"}
+
+
+async def plant_code(email: str, purpose: str, code: str):
+    """Tests can't read the email, so store a known code the way the server would."""
+    from datetime import datetime, timedelta, timezone
+
+    from app.db.mongodb import otp_codes_collection
+    from app.services.otp import _hash
+
+    # let the background send task finish first so it doesn't overwrite us
+    await asyncio.sleep(1.5)
+    now = datetime.now(timezone.utc)
+    await otp_codes_collection.update_one(
+        {"email": email, "purpose": purpose},
+        {"$set": {"code_hash": _hash(email, purpose, code), "attempts": 0, "created_at": now,
+                  "expires_at": now + timedelta(minutes=10)}},
+        upsert=True,
+    )
 
 
 def random_isbn():
@@ -75,6 +100,31 @@ async def main():
         email_b, B = await user(c, "b")
         r = await c.get("/auth/me", headers=A)
         check("me", r.status_code == 200 and r.json()["email"] == email_a)
+
+        print("password reset")
+        r = await c.post("/auth/forgot-password", json={"email": "nobody-" + secrets.token_hex(3) + "@example.com"})
+        check("forgot unknown email is generic", r.status_code == 202)
+        r = await c.post("/auth/forgot-password", json={"email": email_b})
+        check("forgot known email same response", r.status_code == 202)
+        await plant_code(email_b, "reset", "111111")
+        for _ in range(5):
+            await c.post("/auth/reset-password", json={"email": email_b, "code": "999999", "new_password": "New-pass-123"})
+        r = await c.post("/auth/reset-password", json={"email": email_b, "code": "111111", "new_password": "New-pass-123"})
+        check("code locked after 5 wrong attempts", r.status_code == 400, r.text)
+        await plant_code(email_b, "reset", "222222")
+        r = await c.post("/auth/reset-password", json={"email": email_b, "code": "222222", "new_password": "short"})
+        check("reset enforces password rules", r.status_code == 422)
+        r = await c.post("/auth/reset-password", json={"email": email_b, "code": "222222", "new_password": "New-pass-123"})
+        check("reset password", r.status_code == 200 and r.json().get("access_token"), r.text)
+        r_old = await c.get("/auth/me", headers=B)
+        check("old sessions revoked after reset", r_old.status_code == 401)
+        B = {"Authorization": f"Bearer {r.json()['access_token']}"}
+        r = await c.post("/auth/login", json={"email": email_b, "password": "New-pass-123"})
+        check("login with new password", r.status_code == 200)
+        r = await c.post("/auth/register", json={"email": email_a, "password": "Other-pass-1"})
+        check("re-register verified email is generic", r.status_code == 201)
+        r = await c.post("/auth/login", json={"email": email_a, "password": "Other-pass-1"})
+        check("re-register did not change password", r.status_code == 401)
 
         print("isbn lookup")
         r = await c.get("/isbn", params={"isbn": "978-0-451-52493-6"}, headers=A)
@@ -224,6 +274,10 @@ async def cleanup_db(emails, manual_isbn):
                 pass
         await books_collection.delete_one({"_id": b["_id"]})
     await isbn_misses_collection.delete_many({"isbn_13": manual_isbn})
+    from app.db.mongodb import otp_codes_collection, otp_sends_collection
+
+    await otp_codes_collection.delete_many({"email": {"$in": emails}})
+    await otp_sends_collection.delete_many({"email": {"$in": emails}})
     await users_collection.delete_many({"email": {"$in": emails}})
 
 

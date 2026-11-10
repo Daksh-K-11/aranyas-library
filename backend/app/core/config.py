@@ -62,3 +62,30 @@ HTTP_USER_AGENT = _env("HTTP_USER_AGENT", "AthenaeumLibrary/2.0 (personal librar
 
 # ---------------------------------------------------------------- Uploads
 MAX_UPLOAD_BYTES = _int_env("MAX_UPLOAD_BYTES", 3 * 1024 * 1024)
+
+# ---------------------------------------------------------------- Email (OTP)
+# Any SMTP server works. Free options: Gmail with an App Password
+# (smtp.gmail.com:587), Brevo (smtp-relay.brevo.com:587, 300/day free),
+# Resend SMTP (smtp.resend.com:465, 3000/month free).
+SMTP_HOST = _env("SMTP_HOST")
+SMTP_PORT = _int_env("SMTP_PORT", 587)
+SMTP_USERNAME = _env("SMTP_USERNAME")
+SMTP_PASSWORD = _env("SMTP_PASSWORD")
+SMTP_FROM = _env("SMTP_FROM", SMTP_USERNAME)
+SMTP_FROM_NAME = _env("SMTP_FROM_NAME", "Athenaeum")
+# true = implicit TLS (port 465); false = STARTTLS (port 587)
+SMTP_USE_SSL = (_env("SMTP_USE_SSL", "false") or "false").lower() in {"1", "true", "yes"}
+EMAIL_ENABLED = bool(SMTP_HOST and SMTP_FROM)
+
+# "development" prints OTP codes to the server log when SMTP is not set up.
+# In "production" a missing SMTP config is an error.
+APP_ENV = (_env("APP_ENV", "development") or "development").lower()
+APP_NAME = _env("APP_NAME", "Athenaeum")
+
+OTP_TTL_MINUTES = _int_env("OTP_TTL_MINUTES", 10)
+OTP_MAX_ATTEMPTS = _int_env("OTP_MAX_ATTEMPTS", 5)
+OTP_RESEND_COOLDOWN_SECONDS = _int_env("OTP_RESEND_COOLDOWN_SECONDS", 60)
+OTP_MAX_SENDS_PER_HOUR = _int_env("OTP_MAX_SENDS_PER_HOUR", 5)
+
+if APP_ENV == "production" and not EMAIL_ENABLED:
+    log.warning("APP_ENV=production but SMTP is not configured: verification emails cannot be sent")

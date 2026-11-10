@@ -16,6 +16,8 @@ user_books_collection = db.user_books
 libraries_collection = db.libraries
 library_books_collection = db.library_books
 isbn_misses_collection = db.isbn_misses
+otp_codes_collection = db.otp_codes
+otp_sends_collection = db.otp_sends
 
 _covers_bucket = None
 

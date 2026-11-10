@@ -5,6 +5,7 @@ import { Camera, ImagePlus, Loader2, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { BookCover } from "@/components/book-cover"
+import { COVER_ASPECTS, ImageCropDialog } from "@/components/image-crop-dialog"
 import { compressImage, formatBytes } from "@/lib/image"
 
 export interface CoverValue {
@@ -32,6 +33,7 @@ export function CoverPicker({
   const [busy, setBusy] = React.useState(false)
   const [preview, setPreview] = React.useState<string | null>(null)
   const [originalSize, setOriginalSize] = React.useState<number | null>(null)
+  const [pending, setPending] = React.useState<File | null>(null)
 
   React.useEffect(() => {
     if (!value.blob) {
@@ -43,7 +45,8 @@ export function CoverPicker({
     return () => URL.revokeObjectURL(u)
   }, [value.blob])
 
-  const handle = async (file: File | undefined) => {
+  // Step 1: validate the chosen file, then let the user crop it.
+  const handle = (file: File | undefined) => {
     if (!file) return
     if (!file.type.startsWith("image/")) {
       toast.error("Please choose an image file")
@@ -53,11 +56,18 @@ export function CoverPicker({
       toast.error("That image is too large (max 25 MB)")
       return
     }
+    setPending(file)
+  }
+
+  // Step 2: compress the cropped result for upload.
+  const applyCrop = async (cropped: Blob) => {
+    const size = pending?.size ?? cropped.size
+    setPending(null)
     setBusy(true)
     try {
-      const blob = await compressImage(file)
-      setOriginalSize(file.size)
-      onChange({ blob, original: file, url: null })
+      const blob = await compressImage(cropped)
+      setOriginalSize(size)
+      onChange({ blob, original: cropped, url: null })
     } catch (e) {
       toast.error((e as Error).message || "Could not read that image")
     } finally {
@@ -116,6 +126,14 @@ export function CoverPicker({
           }}
         />
       </div>
+      <ImageCropDialog
+        file={pending}
+        title="Crop cover"
+        description="Line the box up with the edges of the cover. Use Free for unusual shapes."
+        aspects={COVER_ASPECTS}
+        onCancel={() => setPending(null)}
+        onConfirm={applyCrop}
+      />
     </div>
   )
 }

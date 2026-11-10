@@ -7,6 +7,8 @@ from pymongo.errors import OperationFailure
 from app.db.mongodb import (
     books_collection,
     isbn_misses_collection,
+    otp_codes_collection,
+    otp_sends_collection,
     libraries_collection,
     library_books_collection,
     user_books_collection,
@@ -45,6 +47,8 @@ async def _migrate():
     # Explicit nulls break partial/sparse unique indexes and are noise.
     for f in ("isbn_10", "isbn_13", "subtitle"):
         await books_collection.update_many({f: None}, {"$unset": {f: ""}})
+    # Accounts created before email verification existed are trusted.
+    await users_collection.update_many({"email_verified": {"$exists": False}}, {"$set": {"email_verified": True}})
     # Old Google covers were stored as http:// (mixed content on https sites).
     async for b in books_collection.find({"cover_url": {"$regex": "^http://"}}, {"cover_url": 1}):
         await books_collection.update_one(
@@ -109,5 +113,14 @@ async def ensure_indexes():
         isbn_misses_collection, [("created_at", ASCENDING)], expireAfterSeconds=86400, name="isbn_miss_ttl_idx"
     )
     await _ensure(isbn_misses_collection, [("isbn_13", ASCENDING)], unique=True, name="isbn_miss_isbn_idx")
+
+    # one-time codes: one per (email, purpose), removed when expired
+    await _ensure(
+        otp_codes_collection, [("email", ASCENDING), ("purpose", ASCENDING)], unique=True, name="otp_email_purpose_idx"
+    )
+    await _ensure(otp_codes_collection, [("expires_at", ASCENDING)], expireAfterSeconds=0, name="otp_expiry_ttl_idx")
+    await _ensure(otp_sends_collection, [("email", ASCENDING), ("purpose", ASCENDING), ("created_at", DESCENDING)],
+                  name="otp_sends_lookup_idx")
+    await _ensure(otp_sends_collection, [("created_at", ASCENDING)], expireAfterSeconds=3600, name="otp_sends_ttl_idx")
 
     log.info("indexes ensured")

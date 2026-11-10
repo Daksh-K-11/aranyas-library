@@ -5,7 +5,7 @@ from jose import JWTError, jwt
 from app.core.config import ACCESS_TOKEN_EXPIRE_MINUTES, ALGORITHM, SECRET_KEY
 
 
-def create_access_token(user_id: str) -> str:
+def create_access_token(user_id: str, token_version: int = 0) -> str:
     now = datetime.now(timezone.utc)
     payload = {
         "sub": user_id,
@@ -13,6 +13,7 @@ def create_access_token(user_id: str) -> str:
         "iat": now,
         "exp": now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
         "typ": "access",
+        "tv": token_version,  # bumped on password reset to revoke old tokens
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 

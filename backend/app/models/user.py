@@ -27,3 +27,21 @@ class LoginIn(BaseModel):
 
 # Backward compatible name
 User = LoginIn
+
+
+OtpCode = Annotated[str, Field(pattern=r"^\d{6}$")]
+
+
+class EmailIn(BaseModel):
+    email: EmailStr
+
+
+class VerifyEmailIn(BaseModel):
+    email: EmailStr
+    code: OtpCode
+
+
+class ResetPasswordIn(BaseModel):
+    email: EmailStr
+    code: OtpCode
+    new_password: Annotated[str, Field(min_length=8, max_length=128), AfterValidator(_password_rules)]

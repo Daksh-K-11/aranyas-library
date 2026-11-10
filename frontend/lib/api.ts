@@ -133,7 +133,31 @@ export const api = {
   login: (email: string, password: string) =>
     apiFetch<{ access_token: string }>("/auth/login", { method: "POST", body: { email, password }, auth: false }),
   register: (email: string, password: string, name?: string) =>
-    apiFetch("/auth/register", { method: "POST", body: { email, password, name: name || null }, auth: false }),
+    apiFetch<{ message: string; email: string; resend_after: number }>("/auth/register", {
+      method: "POST",
+      body: { email, password, name: name || null },
+      auth: false,
+    }),
+  verifyEmail: (email: string, code: string) =>
+    apiFetch<{ access_token: string }>("/auth/verify-email", { method: "POST", body: { email, code }, auth: false }),
+  resendVerification: (email: string) =>
+    apiFetch<{ message: string; resend_after: number }>("/auth/resend-verification", {
+      method: "POST",
+      body: { email },
+      auth: false,
+    }),
+  forgotPassword: (email: string) =>
+    apiFetch<{ message: string; resend_after: number }>("/auth/forgot-password", {
+      method: "POST",
+      body: { email },
+      auth: false,
+    }),
+  resetPassword: (email: string, code: string, new_password: string) =>
+    apiFetch<{ access_token: string }>("/auth/reset-password", {
+      method: "POST",
+      body: { email, code, new_password },
+      auth: false,
+    }),
   me: () => apiFetch<{ id: string; email: string; name?: string | null }>("/auth/me"),
 
   listBooks: (p: ListParams, signal?: AbortSignal) =>
