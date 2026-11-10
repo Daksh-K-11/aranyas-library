@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -64,6 +65,28 @@ PRIORITY = {
 }
 
 
+# Catalogue housekeeping labels that say nothing about the book itself
+# (mostly Open Library). Kept in sync with frontend/lib/subjects.ts.
+_SUBJECT_NOISE = re.compile(
+    r"^(accessible book|protected daisy|in library|lending library|large (type|print) books?"
+    r"|open library.*|overdrive.*|new york times.*|reading level.*|english language.*"
+    r"|translations?\b.*|specimens|textbooks?|general|ebooks?"
+    r"|(fiction|literature),? general)$"
+    r"|bestseller|:",
+    re.IGNORECASE,
+)
+
+
+def clean_subjects(subjects, limit: int = 10) -> List[str]:
+    """Drop catalogue noise and trailing periods from subject headings."""
+    kept = (
+        s.strip().rstrip(".")
+        for s in subjects
+        if isinstance(s, str) and s.strip() and not _SUBJECT_NOISE.search(s.strip())
+    )
+    return dedupe(kept, limit, 60)
+
+
 def _rank(field_name: str, source: str) -> int:
     order = PRIORITY.get(field_name, [])
     return order.index(source) if source in order else len(order)
@@ -113,7 +136,7 @@ def _from_google_volume(info: dict, source: str = "google_books") -> NormalizedB
         publisher=clean_str(info.get("publisher"), 200),
         published_year=parse_year(info.get("publishedDate")),
         description=strip_html(info.get("description")),
-        categories=dedupe(categories, 10, 60),
+        categories=clean_subjects(categories, 10),
         cover_url=_google_cover(info.get("imageLinks") or {}),
         page_count=info.get("pageCount") if isinstance(info.get("pageCount"), int) else None,
         language=clean_str(info.get("language"), 10),
@@ -200,7 +223,7 @@ async def fetch_open_library(isbn: str) -> Optional[NormalizedBook]:
             published_year=parse_year(book.get("publish_date") or edition.get("publish_date")),
             description=description,
             # OL subjects are noisy: keep the first few short ones.
-            categories=dedupe((s for s in subjects if s and len(s) <= 40), 8, 60),
+            categories=clean_subjects((s for s in subjects if s and len(s) <= 40), 8),
             cover_url=https(cover_url),
             page_count=pages if isinstance(pages, int) else None,
             isbn_13=isbn_13,
@@ -237,7 +260,7 @@ def _from_ol_search_doc(doc: dict) -> NormalizedBook:
         authors=dedupe((normalize_author(a) for a in doc.get("author_name", []) or []), 20, 200),
         publisher=clean_str((doc.get("publisher") or [None])[0], 200),
         published_year=parse_year(doc.get("first_publish_year")),
-        categories=dedupe((s for s in doc.get("subject", []) or [] if len(s) <= 40), 8, 60),
+        categories=clean_subjects((s for s in doc.get("subject", []) or [] if isinstance(s, str) and len(s) <= 40), 8),
         cover_url=f"{OL_COVERS}/b/id/{cover_id}-L.jpg" if isinstance(cover_id, int) and cover_id > 0 else None,
         language=clean_str((doc.get("language") or [None])[0], 10),
     )
@@ -316,7 +339,7 @@ async def fetch_library_of_congress(isbn: str) -> Optional[NormalizedBook]:
             publisher=clean_str(publisher.rstrip(" ,") if publisher else None, 200),
             published_year=year,
             description=strip_html(abstract),
-            categories=dedupe(categories, 8, 60),
+            categories=clean_subjects(categories, 8),
         )
     except ET.ParseError:
         return None
@@ -344,7 +367,7 @@ def merge_books(results: List[NormalizedBook], isbn_13: str, isbn_10: Optional[s
     description = max(descriptions, key=len)[:8000] if descriptions else None
 
     cat_sources = sorted(results, key=lambda r: _rank("title", r.source))
-    categories = dedupe((c for r in cat_sources for c in r.categories), 10, 60)
+    categories = clean_subjects(c for r in cat_sources for c in r.categories)
 
     title = pick("title")
     subtitle = pick("subtitle")
@@ -454,7 +477,7 @@ async def search_candidates(query: str, limit: int = 10) -> List[Dict[str, Any]]
                 "publisher": c.publisher,
                 "published_year": c.published_year,
                 "description": c.description,
-                "categories": c.categories,
+                "categories": clean_subjects(c.categories),
                 "cover_url": c.cover_url,
                 "isbn_13": isbn_13,
                 "isbn_10": parsed[1] if parsed else None,
