@@ -273,20 +273,140 @@ function DashboardContent() {
         </header>
 
         <main className="flex-1 px-3 py-4 sm:px-6 sm:py-6">
-          {hasQuery ? (
-            <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
-              <span className="text-muted-foreground">
-                {loading ? "Searching…" : `${total} result${total === 1 ? "" : "s"}`}
-              </span>
-              {q ? <Chip onRemove={() => { setSearch(""); setParams({ q: null }) }}>“{q}”</Chip> : null}
-              {genre ? <Chip onRemove={() => setParams({ genre: null })}>{genre}</Chip> : null}
-              {status ? <Chip onRemove={() => setParams({ status: null })}>{STATUS_META[status].label}</Chip> : null}
-              {minRating ? <Chip onRemove={() => setParams({ rating: null })}>{minRating}★ and up</Chip> : null}
-              <button onClick={clearFilters} className="text-xs text-muted-foreground underline-offset-2 hover:underline">
-                Clear all
-              </button>
+          {/* Controls & Filter Bar: visible & working on all screen sizes */}
+          <div className="mb-4 flex flex-col gap-2.5">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none sm:flex-wrap">
+              {/* Genre Dropdown */}
+              <div className="shrink-0">
+                <Select value={genre || "all"} onValueChange={(v) => setParams({ genre: v === "all" ? null : v })}>
+                  <SelectTrigger
+                    className={cn(
+                      "h-9 rounded-full px-3 text-xs sm:text-sm font-medium border transition-colors",
+                      genre
+                        ? "border-primary bg-primary/10 text-primary font-semibold"
+                        : "bg-background text-muted-foreground hover:text-foreground",
+                    )}
+                    aria-label="Filter by genre"
+                  >
+                    <span className="truncate max-w-[120px] sm:max-w-[160px]">
+                      {genre ? `Genre: ${genre}` : "All genres"}
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent className="max-h-80 z-[100]">
+                    <SelectItem value="all">All genres</SelectItem>
+                    {facets.genres.map((g) => (
+                      <SelectItem key={g} value={g}>
+                        {g}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Status Dropdown */}
+              <div className="shrink-0">
+                <Select value={status || "all"} onValueChange={(v) => setParams({ status: v === "all" ? null : v })}>
+                  <SelectTrigger
+                    className={cn(
+                      "h-9 rounded-full px-3 text-xs sm:text-sm font-medium border transition-colors",
+                      status
+                        ? "border-primary bg-primary/10 text-primary font-semibold"
+                        : "bg-background text-muted-foreground hover:text-foreground",
+                    )}
+                    aria-label="Filter by status"
+                  >
+                    <span className="truncate max-w-[120px] sm:max-w-[160px]">
+                      {status ? `Status: ${STATUS_META[status]?.label || status}` : "All status"}
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent className="max-h-80 z-[100]">
+                    <SelectItem value="all">All status</SelectItem>
+                    {(Object.keys(STATUS_META) as ReadStatus[]).map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {STATUS_META[s].label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Sort Dropdown */}
+              <div className="shrink-0">
+                <Select value={sortValue} onValueChange={(v) => setParams({ sort: v })}>
+                  <SelectTrigger
+                    className="h-9 rounded-full px-3 text-xs sm:text-sm font-medium border bg-background text-muted-foreground hover:text-foreground"
+                    aria-label="Sort books"
+                  >
+                    <span className="truncate max-w-[140px] sm:max-w-[200px]">
+                      Sort: {SORTS.find((s) => s.value === sortValue)?.label || "Sort"}
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent className="max-h-80 z-[100]">
+                    {SORTS.filter((s) => !s.libraryOnly || !!activeLibraryId).map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        {s.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Rating Dropdown */}
+              <div className="shrink-0">
+                <Select
+                  value={minRating ? String(minRating) : "all"}
+                  onValueChange={(v) => setParams({ rating: v === "all" ? null : Number(v) })}
+                >
+                  <SelectTrigger
+                    className={cn(
+                      "h-9 rounded-full px-3 text-xs sm:text-sm font-medium border transition-colors",
+                      minRating
+                        ? "border-primary bg-primary/10 text-primary font-semibold"
+                        : "bg-background text-muted-foreground hover:text-foreground",
+                    )}
+                    aria-label="Filter by rating"
+                  >
+                    <span className="truncate">
+                      {minRating ? `${minRating}★ & up` : "Rating"}
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent className="max-h-80 z-[100]">
+                    <SelectItem value="all">Any rating</SelectItem>
+                    {[5, 4, 3, 2, 1].map((r) => (
+                      <SelectItem key={r} value={String(r)}>
+                        {r}★ & up
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Clear filters shortcut */}
+              {hasQuery ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="h-9 px-2.5 text-xs text-muted-foreground hover:text-foreground shrink-0 rounded-full"
+                >
+                  Clear all
+                </Button>
+              ) : null}
             </div>
-          ) : null}
+
+            {/* Active Query & Filter Summary Chips */}
+            {hasQuery ? (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-muted-foreground">
+                  {loading ? "Searching…" : `${total} result${total === 1 ? "" : "s"}`}
+                </span>
+                {q ? <Chip onRemove={() => { setSearch(""); setParams({ q: null }) }}>“{q}”</Chip> : null}
+                {genre ? <Chip onRemove={() => setParams({ genre: null })}>{genre}</Chip> : null}
+                {status ? <Chip onRemove={() => setParams({ status: null })}>{STATUS_META[status]?.label}</Chip> : null}
+                {minRating ? <Chip onRemove={() => setParams({ rating: null })}>{minRating}★ and up</Chip> : null}
+              </div>
+            ) : null}
+          </div>
 
           {loadError ? (
             <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-center">
@@ -427,7 +547,16 @@ function FilterPopover({
           ) : null}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[min(20rem,calc(100vw-1.5rem))] space-y-4">
+      <PopoverContent
+        align="end"
+        onInteractOutside={(e) => {
+          const target = e.target as HTMLElement | null
+          if (target?.closest?.('[data-slot="select-content"]') || target?.closest?.('[data-slot="select-item"]')) {
+            e.preventDefault()
+          }
+        }}
+        className="w-[min(20rem,calc(100vw-1.5rem))] space-y-4 z-50"
+      >
         <div className="grid gap-1.5">
           <Label>Sort by</Label>
           <Select value={sortValue} onValueChange={(v) => onChange({ sort: v })}>

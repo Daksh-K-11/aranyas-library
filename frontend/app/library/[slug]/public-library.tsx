@@ -141,27 +141,25 @@ function PublicLibraryInner({ slug }: { slug: string }) {
               aria-label="Search this library"
             />
           </div>
-          <div className="flex gap-2">
-            {lib?.genres.length ? (
-              <Select value={genre || "all"} onValueChange={(v) => setParams({ genre: v === "all" ? null : v })}>
-                <SelectTrigger className="h-10 w-full rounded-full sm:w-44" aria-label="Genre">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="max-h-72">
-                  <SelectItem value="all">All genres</SelectItem>
-                  {lib.genres.map((g) => (
-                    <SelectItem key={g} value={g}>
-                      {g}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : null}
+          <div className="flex flex-wrap sm:flex-nowrap gap-2">
+            <Select value={genre || "all"} onValueChange={(v) => setParams({ genre: v === "all" ? null : v })}>
+              <SelectTrigger className="h-10 flex-1 sm:w-44 sm:flex-none rounded-full" aria-label="Genre">
+                <SelectValue placeholder="All genres" />
+              </SelectTrigger>
+              <SelectContent className="max-h-80 z-[100]">
+                <SelectItem value="all">All genres</SelectItem>
+                {lib?.genres?.map((g) => (
+                  <SelectItem key={g} value={g}>
+                    {g}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select value={sortValue} onValueChange={(v) => setParams({ sort: v })}>
-              <SelectTrigger className="h-10 w-full rounded-full sm:w-44" aria-label="Sort">
+              <SelectTrigger className="h-10 flex-1 sm:w-44 sm:flex-none rounded-full" aria-label="Sort">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-80 z-[100]">
                 {SORTS.map((s) => (
                   <SelectItem key={s.value} value={s.value}>
                     {s.label}
