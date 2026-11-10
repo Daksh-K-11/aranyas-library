@@ -31,7 +31,7 @@ def test_google_parse():
     })
     assert nb.published_year == 2004
     assert nb.description == "Hello & bye"
-    assert nb.categories == ["Fiction", "General"]
+    assert nb.categories == ["Fiction"]  # "General" is catalogue noise
     assert nb.cover_url == "https://books.google.com/x?id=1"
 
 

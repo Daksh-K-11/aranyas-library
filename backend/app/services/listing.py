@@ -10,6 +10,8 @@ from typing import Any, Dict, List, Optional
 
 from bson import ObjectId
 
+from app.services.catalog import subject_suggestions
+
 BOOK_FIELDS = [
     "title", "subtitle", "authors", "publisher", "published_year", "description",
     "categories", "cover_url", "isbn_13", "isbn_10", "source", "sources", "page_count", "language",
@@ -26,7 +28,7 @@ def user_book_match(
     q: Optional[str] = None,
     genre: Optional[str] = None,
     read_status: Optional[str] = None,
-    min_rating: Optional[int] = None,
+    min_rating: Optional[float] = None,
     prefix: str = "",
 ) -> Dict[str, Any]:
     match: Dict[str, Any] = {}
@@ -142,6 +144,7 @@ def serialize_private(doc: Dict[str, Any]) -> Dict[str, Any]:
     book["is_private"] = owner is not None
     for f in ("authors", "categories"):
         book[f] = book.get(f) or []
+    book.update(subject_suggestions(book["categories"]))
     return {
         "user_book_id": str(doc["_id"]),
         "book_id": str(doc.get("book_id")) if doc.get("book_id") else book["id"],

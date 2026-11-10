@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -17,6 +16,8 @@ import httpx
 
 from app.core.config import GOOGLE_BOOKS_API_KEY
 from app.core.http import get_http_client
+from app.services.catalog import subject_suggestions
+from app.services.genres import clean_subjects
 from app.utils.isbn import isbn13_to_isbn10, try_parse_isbn
 from app.utils.text import clean_str, dedupe, https, normalize_author, parse_year, strip_html
 
@@ -63,28 +64,6 @@ PRIORITY = {
     "page_count": ["google_books", "open_library", "library_of_congress"],
     "language": ["google_books", "open_library", "library_of_congress"],
 }
-
-
-# Catalogue housekeeping labels that say nothing about the book itself
-# (mostly Open Library). Kept in sync with frontend/lib/subjects.ts.
-_SUBJECT_NOISE = re.compile(
-    r"^(accessible book|protected daisy|in library|lending library|large (type|print) books?"
-    r"|open library.*|overdrive.*|new york times.*|reading level.*|english language.*"
-    r"|translations?\b.*|specimens|textbooks?|general|ebooks?"
-    r"|(fiction|literature),? general)$"
-    r"|bestseller|:",
-    re.IGNORECASE,
-)
-
-
-def clean_subjects(subjects, limit: int = 10) -> List[str]:
-    """Drop catalogue noise and trailing periods from subject headings."""
-    kept = (
-        s.strip().rstrip(".")
-        for s in subjects
-        if isinstance(s, str) and s.strip() and not _SUBJECT_NOISE.search(s.strip())
-    )
-    return dedupe(kept, limit, 60)
 
 
 def _rank(field_name: str, source: str) -> int:
@@ -478,6 +457,7 @@ async def search_candidates(query: str, limit: int = 10) -> List[Dict[str, Any]]
                 "published_year": c.published_year,
                 "description": c.description,
                 "categories": clean_subjects(c.categories),
+                **subject_suggestions(c.categories),
                 "cover_url": c.cover_url,
                 "isbn_13": isbn_13,
                 "isbn_10": parsed[1] if parsed else None,

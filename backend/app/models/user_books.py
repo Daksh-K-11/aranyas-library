@@ -2,16 +2,16 @@ from typing import Annotated, List, Literal, Optional
 
 from pydantic import AfterValidator, BaseModel, Field, field_validator
 
-from app.models.common import AuthorList, CategoryList, IdList, OptText, TagList, clean_title
+from app.models.common import AuthorList, CategoryList, GenreList, IdList, OptText, Rating, TagList, clean_title
 
 ReadStatus = Literal["unread", "reading", "completed"]
 
 
 class UserBookFields(BaseModel):
-    genres: TagList = []
+    genres: GenreList = []
     tags: TagList = []
     personal_notes: OptText(5000) = None
-    rating: Optional[int] = Field(default=None, ge=1, le=5)
+    rating: Rating = None
     read_status: ReadStatus = "unread"
 
 
@@ -45,10 +45,10 @@ class BookOverrides(BaseModel):
 
 
 class UserBookUpdate(BaseModel):
-    genres: Optional[TagList] = None
+    genres: Optional[GenreList] = None
     tags: Optional[TagList] = None
     personal_notes: OptText(5000) = None
-    rating: Optional[int] = Field(default=None, ge=1, le=5)
+    rating: Rating = None
     read_status: Optional[ReadStatus] = None
     overrides: Optional[BookOverrides] = None
     reset_overrides: bool = False

@@ -6,6 +6,7 @@ from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 
 from app.db.mongodb import books_collection, user_books_collection
+from app.services.genres import suggest_from_subjects
 
 
 def visible_filter(user_id: str) -> Dict[str, Any]:
@@ -19,7 +20,14 @@ def serialize_book(doc: Dict[str, Any]) -> Dict[str, Any]:
     out["is_private"] = "owner_user_id" in doc
     out["authors"] = doc.get("authors") or []
     out["categories"] = doc.get("categories") or []
+    out.update(subject_suggestions(out["categories"]))
     return out
+
+
+def subject_suggestions(categories) -> Dict[str, Any]:
+    """Genres/tags the app suggests for a book, from its catalogue subjects."""
+    s = suggest_from_subjects(categories)
+    return {"suggested_genres": s["genres"], "suggested_tags": s["tags"]}
 
 
 def strip_nones(d: Dict[str, Any]) -> Dict[str, Any]:

@@ -2,6 +2,7 @@ from typing import Annotated, List, Optional
 
 from pydantic import AfterValidator, Field
 
+from app.services.genres import normalize_genre
 from app.utils.text import clean_str, dedupe
 
 
@@ -30,3 +31,20 @@ def clean_title(v: str) -> str:
     if not v:
         raise ValueError("Title is required")
     return v
+
+
+def _genres(values: List[str]) -> List[str]:
+    # One spelling per genre: "sci-fi" and "Science fiction" both become the preset.
+    return dedupe((normalize_genre(v) for v in values), 30, 40)
+
+
+GenreList = Annotated[TagList, AfterValidator(_genres)]
+
+
+def _rating(v: Optional[float]) -> Optional[float]:
+    return None if v is None else round(v, 1)
+
+
+# Out of 5, one decimal place (4.3). Stored as a float; old whole-number
+# ratings stay valid as they are.
+Rating = Annotated[Optional[float], Field(default=None, ge=0.5, le=5), AfterValidator(_rating)]

@@ -208,7 +208,7 @@ async def list_user_books(
     q: Optional[str] = Query(None, max_length=200),
     genre: Optional[str] = Query(None, max_length=40),
     read_status: Optional[ReadStatus] = None,
-    min_rating: Optional[int] = Query(None, ge=1, le=5),
+    min_rating: Optional[float] = Query(None, ge=0, le=5),
     page: int = Query(1, ge=1, le=10000),
     page_size: int = Query(24, ge=1, le=60),
     sort: str = Query("updated_at", pattern=SORT_PATTERN),
