@@ -152,6 +152,20 @@
   }
 }
 
+/* Toast swiping & interactive grab feedback */
+[data-sonner-toast] {
+  touch-action: none;
+}
+
+@media (pointer: fine) {
+  [data-sonner-toast] {
+    cursor: grab;
+  }
+  [data-sonner-toast][data-swiping='true'] {
+    cursor: grabbing;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

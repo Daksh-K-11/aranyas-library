@@ -51,7 +51,7 @@ interface AddBookModalProps {
 
 export function AddBookModal({ open, onOpenChange, libraries, activeLibraryId, facets, onAdded }: AddBookModalProps) {
   const [step, setStep] = React.useState<Step>("find")
-  const [tab, setTab] = React.useState<"isbn" | "scan" | "search">("isbn")
+  const [tab, setTab] = React.useState<"scan" | "search" | "isbn">("scan")
   const [isbn, setIsbn] = React.useState("")
   const [isbnError, setIsbnError] = React.useState<string | null>(null)
   const [looking, setLooking] = React.useState(false)
@@ -74,7 +74,7 @@ export function AddBookModal({ open, onOpenChange, libraries, activeLibraryId, f
 
   const reset = React.useCallback(() => {
     setStep("find")
-    setTab("isbn")
+    setTab("scan")
     setIsbn("")
     setIsbnError(null)
     setFound(null)
@@ -283,7 +283,7 @@ export function AddBookModal({ open, onOpenChange, libraries, activeLibraryId, f
       open={open}
       onOpenChange={(o) => !saving && onOpenChange(o)}
       title={title}
-      description={step === "find" ? "Scan the barcode, type the ISBN or search by title." : undefined}
+      description={step === "find" ? "Scan the barcode, search by title or type the ISBN." : undefined}
       footer={footer}
       dismissible={!saving && step !== "manual"}
       size={step === "find" || step === "notfound" ? "md" : "lg"}
@@ -291,51 +291,16 @@ export function AddBookModal({ open, onOpenChange, libraries, activeLibraryId, f
       {step === "find" && (
         <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)} className="gap-5">
           <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="isbn" className="gap-1.5">
-              <Keyboard className="size-4" /> ISBN
-            </TabsTrigger>
             <TabsTrigger value="scan" className="gap-1.5">
               <ScanLine className="size-4" /> Scan
             </TabsTrigger>
             <TabsTrigger value="search" className="gap-1.5">
               <Search className="size-4" /> Title
             </TabsTrigger>
+            <TabsTrigger value="isbn" className="gap-1.5">
+              <Keyboard className="size-4" /> ISBN
+            </TabsTrigger>
           </TabsList>
-
-          <TabsContent value="isbn">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault()
-                lookup(isbn)
-              }}
-              className="grid gap-3"
-            >
-              <Label htmlFor="isbn-input">ISBN (10 or 13 digits)</Label>
-              <div className="relative">
-                <Barcode className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id="isbn-input"
-                  value={isbn}
-                  onChange={(e) => {
-                    setIsbn(e.target.value)
-                    setIsbnError(null)
-                  }}
-                  inputMode="numeric"
-                  autoComplete="off"
-                  autoFocus
-                  placeholder="978-0-14-118280-3"
-                  maxLength={20}
-                  aria-invalid={!!isbnError}
-                  className="h-12 pl-11 font-mono text-base tracking-wide"
-                />
-              </div>
-              {isbnError ? <p className="text-sm text-destructive">{isbnError}</p> : null}
-              <Button type="submit" disabled={looking || !isbn.trim()} className="h-11">
-                {looking ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
-                {looking ? "Searching catalogues…" : "Find book"}
-              </Button>
-            </form>
-          </TabsContent>
 
           <TabsContent value="scan">
             {tab === "scan" && !looking ? (
@@ -391,6 +356,41 @@ export function AddBookModal({ open, onOpenChange, libraries, activeLibraryId, f
                 ))}
               </ul>
             ) : null}
+          </TabsContent>
+
+          <TabsContent value="isbn">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                lookup(isbn)
+              }}
+              className="grid gap-3"
+            >
+              <Label htmlFor="isbn-input">ISBN (10 or 13 digits)</Label>
+              <div className="relative">
+                <Barcode className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="isbn-input"
+                  value={isbn}
+                  onChange={(e) => {
+                    setIsbn(e.target.value)
+                    setIsbnError(null)
+                  }}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  autoFocus
+                  placeholder="978-0-14-118280-3"
+                  maxLength={20}
+                  aria-invalid={!!isbnError}
+                  className="h-12 pl-11 font-mono text-base tracking-wide"
+                />
+              </div>
+              {isbnError ? <p className="text-sm text-destructive">{isbnError}</p> : null}
+              <Button type="submit" disabled={looking || !isbn.trim()} className="h-11">
+                {looking ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
+                {looking ? "Searching catalogues…" : "Find book"}
+              </Button>
+            </form>
           </TabsContent>
 
           <div className="flex items-center gap-3 pt-2 text-xs text-muted-foreground">
